@@ -5,7 +5,8 @@ A Dockerized Python CLI tool that transcribes YouTube videos using local Whisper
 ## Features
 
 - Download audio from YouTube videos
-- Transcribe using OpenAI Whisper (local, privacy-focused)
+- Transcribe using [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) by default
+- Automatic Whisper fallback for offline or backup transcription
 - Extract key information using Claude or GPT
 - Generate formatted markdown files
 - Fully containerized with Docker
@@ -38,6 +39,7 @@ transcript-pipeline/
 - Docker and Docker Compose
 - (Optional for local run) Python 3.11+
 - API key for Claude (Anthropic) or GPT (OpenAI)
+- ElevenLabs API key for Scribe v2 Realtime transcription (default engine)
 
 ## Setup
 
@@ -58,16 +60,22 @@ cp .env.example .env
 Edit `.env` and add your API key(s):
 
 ```bash
+# ElevenLabs Scribe (default transcription engine)
+ELEVENLABS_API_KEY=your_elevenlabs_key_here
+TRANSCRIPTION_ENGINE=scribe
+SCRIBE_MODEL_ID=scribe_v2
+
+# Whisper fallback model size (tiny, base, small, medium, large)
+WHISPER_MODEL=base
+
 # Use Claude (recommended)
 ANTHROPIC_API_KEY=your_anthropic_key_here
-DEFAULT_LLM=claude
 
 # OR use GPT
 OPENAI_API_KEY=your_openai_key_here
-DEFAULT_LLM=gpt
 
-# Whisper model size (tiny, base, small, medium, large)
-WHISPER_MODEL=base
+# Default LLM for extraction (claude or gpt)
+DEFAULT_LLM=claude
 ```
 
 ### 3. Build the Docker Image
@@ -91,6 +99,8 @@ Process a single YouTube video:
 ```bash
 docker-compose run --rm transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
 ```
+
+> The CLI streams audio to ElevenLabs Scribe v2 Realtime when `ELEVENLABS_API_KEY` is configured. Use `--engine whisper` to force the local Whisper fallback.
 
 With custom options:
 
@@ -178,7 +188,7 @@ This video provides a comprehensive introduction to machine learning...
 ```
 python -m src.main [-h] [--model {tiny,base,small,medium,large}]
                         [--llm {claude,gpt}] [--output-dir OUTPUT_DIR]
-                        [--no-extract]
+                        [--engine {scribe,whisper}] [--no-extract]
                         url
 
 Positional arguments:
@@ -187,6 +197,7 @@ Positional arguments:
 Optional arguments:
   -h, --help           Show help message
   --model MODEL        Whisper model size (default: base)
+  --engine ENGINE      Transcription engine: scribe (default) or whisper
   --llm LLM           LLM for extraction: claude or gpt (default: claude)
   --output-dir DIR     Output directory (default: ./output)
   --no-extract         Skip extraction, only transcribe
@@ -261,6 +272,7 @@ Try a different video URL.
 Make sure your `.env` file contains the correct API key:
 - `ANTHROPIC_API_KEY` for Claude
 - `OPENAI_API_KEY` for GPT
+- `ELEVENLABS_API_KEY` for Scribe
 
 ### Whisper model download fails
 
@@ -274,6 +286,13 @@ The first run downloads the Whisper model. If it fails:
 If transcribing large videos:
 1. Use a smaller Whisper model: `--model tiny` or `--model base`
 2. Increase Docker memory allocation in Docker Desktop settings
+
+### ElevenLabs API errors
+
+If Scribe requests fail or you are offline:
+1. Confirm `ELEVENLABS_API_KEY` is present and valid.
+2. Check your ElevenLabs usage limits.
+3. Rerun with `--engine whisper` to stay fully local.
 
 ### ffmpeg not found (local Python)
 

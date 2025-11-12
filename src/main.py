@@ -74,6 +74,9 @@ def process_video(
     whisper_model: str,
     llm_type: str,
     output_dir: str,
+    transcription_engine: str,
+    elevenlabs_api_key: Optional[str],
+    scribe_model_id: str,
     no_extract: bool = False
 ) -> None:
     """
@@ -84,6 +87,9 @@ def process_video(
         whisper_model: Whisper model size
         llm_type: LLM type for extraction
         output_dir: Output directory for markdown files
+        transcription_engine: Preferred transcription engine ("scribe" or "whisper")
+        elevenlabs_api_key: API key for ElevenLabs (required for Scribe)
+        scribe_model_id: ElevenLabs Scribe model identifier
         no_extract: Skip extraction step
     """
     config = load_config()
@@ -100,7 +106,14 @@ def process_video(
         print("\n" + "="*60)
         print("STEP 2: Transcribing Audio")
         print("="*60)
-        transcriber = Transcriber(model_name=whisper_model, model_dir="./models")
+        transcriber = Transcriber(
+            model_name=whisper_model,
+            model_dir="./models",
+            engine=transcription_engine,
+            fallback_engine="whisper",
+            elevenlabs_api_key=elevenlabs_api_key,
+            scribe_model_id=scribe_model_id,
+        )
         segments = transcriber.transcribe(audio_path)
 
         # Format transcript with timestamps
@@ -195,6 +208,13 @@ Examples:
     )
 
     parser.add_argument(
+        '--engine',
+        default=None,
+        choices=['scribe', 'whisper'],
+        help='Transcription engine (default: from .env or "scribe")'
+    )
+
+    parser.add_argument(
         '--no-extract',
         action='store_true',
         help='Skip extraction, only transcribe'
@@ -207,12 +227,20 @@ Examples:
     whisper_model = args.model or config.get('whisper_model', 'base')
     llm_type = args.llm or config.get('default_llm', 'claude')
     output_dir = args.output_dir or config.get('output_dir', './output')
+    transcription_engine = args.engine or config.get('transcription_engine', 'scribe')
+    elevenlabs_api_key = config.get('elevenlabs_api_key')
+    scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
+
+    if transcription_engine == 'scribe' and not elevenlabs_api_key:
+        print("Warning: ELEVENLABS_API_KEY not found. Falling back to Whisper.")
+        transcription_engine = 'whisper'
 
     print(f"""
 Transcript Pipeline
 ===================
 URL: {args.url}
 Whisper Model: {whisper_model}
+Transcription Engine: {transcription_engine}
 LLM: {llm_type}
 Output Directory: {output_dir}
 Extract: {not args.no_extract}
@@ -223,6 +251,9 @@ Extract: {not args.no_extract}
         whisper_model=whisper_model,
         llm_type=llm_type,
         output_dir=output_dir,
+        transcription_engine=transcription_engine,
+        elevenlabs_api_key=elevenlabs_api_key,
+        scribe_model_id=scribe_model_id,
         no_extract=args.no_extract
     )
 

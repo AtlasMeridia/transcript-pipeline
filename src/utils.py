@@ -94,6 +94,9 @@ def load_config() -> dict:
         'default_llm': os.getenv('DEFAULT_LLM', 'claude'),
         'whisper_model': os.getenv('WHISPER_MODEL', 'base'),
         'output_dir': os.getenv('OUTPUT_DIR', './output'),
+        'elevenlabs_api_key': os.getenv('ELEVENLABS_API_KEY'),
+        'transcription_engine': os.getenv('TRANSCRIPTION_ENGINE', 'scribe'),
+        'scribe_model_id': os.getenv('SCRIBE_MODEL_ID', 'scribe_v2'),
     }
 
     return config

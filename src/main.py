@@ -149,7 +149,8 @@ def process_video(
                     return
 
             # Extract information
-            extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key)
+            model_id = config.get('claude_model_id') if llm_type == "claude" else config.get('openai_model_id')
+            extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key, model_id=model_id)
             full_text = transcriber.get_full_text(segments)
             summary = extractor.extract(full_text, metadata)
 
@@ -244,6 +245,7 @@ Examples:
     transcription_engine = args.engine or config.get('transcription_engine', 'scribe')
     elevenlabs_api_key = config.get('elevenlabs_api_key')
     scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
+    llm_model_id = config.get('claude_model_id') if llm_type == 'claude' else config.get('openai_model_id')
 
     if transcription_engine == 'scribe' and not elevenlabs_api_key:
         print("Warning: ELEVENLABS_API_KEY not found. Falling back to Whisper.")
@@ -256,6 +258,7 @@ URL: {args.url}
 Whisper Model: {whisper_model}
 Transcription Engine: {transcription_engine}
 LLM: {llm_type}
+LLM Model: {llm_model_id or '(default)'}
 Output Directory: {output_dir}
 Extract: {not args.no_extract}
     """)

@@ -97,6 +97,8 @@ def load_config() -> dict:
         'elevenlabs_api_key': os.getenv('ELEVENLABS_API_KEY'),
         'transcription_engine': os.getenv('TRANSCRIPTION_ENGINE', 'scribe'),
         'scribe_model_id': os.getenv('SCRIBE_MODEL_ID', 'scribe_v2'),
+        'claude_model_id': os.getenv('CLAUDE_MODEL_ID', 'claude-sonnet-4-5'),
+        'openai_model_id': os.getenv('OPENAI_MODEL_ID', 'gpt-4o-mini'),
     }
 
     return config

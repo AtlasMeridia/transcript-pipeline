@@ -10,6 +10,14 @@ from .utils import retry_with_backoff
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5"
+DEFAULT_GPT_MODEL = "gpt-4o-mini"
+
+DEPRECATED_CLAUDE_MODELS = {
+    "claude-3-5-sonnet-20241022": DEFAULT_CLAUDE_MODEL,
+    "claude-3-5-sonnet-latest": DEFAULT_CLAUDE_MODEL,
+}
+
 
 class TranscriptExtractor:
     """Extracts key information from transcripts using AI."""
@@ -67,20 +75,39 @@ Part summaries:
 {part_summaries}
 """
 
-    def __init__(self, llm_type: str = "claude", api_key: Optional[str] = None):
+    def __init__(
+        self,
+        llm_type: str = "claude",
+        api_key: Optional[str] = None,
+        model_id: Optional[str] = None,
+    ):
         """
         Initialize the extractor.
 
         Args:
             llm_type: Type of LLM to use ('claude' or 'gpt')
             api_key: API key for the chosen LLM
+            model_id: Optional override for the underlying model identifier
         """
         self.llm_type = llm_type.lower()
         self.api_key = api_key
+        self.model_id = model_id
 
         if self.llm_type == "claude":
+            if self.model_id:
+                self.model_id = self.model_id.strip().strip('"').strip("'")
+            self.model_id = self.model_id or DEFAULT_CLAUDE_MODEL
+            replacement = DEPRECATED_CLAUDE_MODELS.get(self.model_id)
+            if replacement:
+                print(
+                    f"Warning: Claude model '{self.model_id}' is deprecated or unavailable. "
+                    f"Switching to '{replacement}'."
+                )
+                self.model_id = replacement
+            print(f"Using Claude model: {self.model_id}")
             self.client = Anthropic(api_key=api_key)
         elif self.llm_type == "gpt":
+            self.model_id = self.model_id or DEFAULT_GPT_MODEL
             self.client = OpenAI(api_key=api_key)
         else:
             raise ValueError(f"Unsupported LLM type: {llm_type}. Use 'claude' or 'gpt'")
@@ -201,7 +228,7 @@ Part summaries:
 
             def call_claude():
                 response = self.client.messages.create(
-                    model="claude-sonnet-4-5-20250929",
+                    model=self.model_id,
                     max_tokens=4000,
                     messages=[{
                         "role": "user",
@@ -240,7 +267,7 @@ Part summaries:
 
             def call_gpt():
                 response = self.client.chat.completions.create(
-                    model="gpt-4-turbo-preview",
+                    model=self.model_id,
                     messages=[{
                         "role": "system",
                         "content": "You are a helpful assistant that extracts key information from video transcripts."

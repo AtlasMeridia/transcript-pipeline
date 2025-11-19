@@ -76,6 +76,10 @@ OPENAI_API_KEY=your_openai_key_here
 
 # Default LLM for extraction (claude or gpt)
 DEFAULT_LLM=claude
+
+# Optional overrides for specific model versions
+CLAUDE_MODEL_ID=claude-sonnet-4-5
+OPENAI_MODEL_ID=gpt-4o-mini
 ```
 
 ### 3. Build the Docker Image

@@ -14,8 +14,13 @@ services:
       # Load environment variables from .env file
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - DEFAULT_LLM=${DEFAULT_LLM:-claude}
+      - CLAUDE_MODEL_ID=${CLAUDE_MODEL_ID:-claude-sonnet-4-5}
+      - OPENAI_MODEL_ID=${OPENAI_MODEL_ID:-gpt-4o-mini}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-scribe}
+      - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}
       - OUTPUT_DIR=/app/output
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-scribe}

@@ -1,6 +1,8 @@
 """Main CLI interface for transcript pipeline."""
 
 import argparse
+import logging
+import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -77,7 +79,8 @@ def process_video(
     transcription_engine: str,
     elevenlabs_api_key: Optional[str],
     scribe_model_id: str,
-    no_extract: bool = False
+    no_extract: bool = False,
+    raise_on_error: bool = False,
 ) -> None:
     """
     Process a YouTube video: download, transcribe, and extract.
@@ -96,16 +99,18 @@ def process_video(
 
     try:
         # Step 1: Download audio
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("STEP 1: Downloading Audio")
-        print("="*60)
-        downloader = VideoDownloader(output_dir=output_dir)
+        print("=" * 60)
+        # Keep media files in a dedicated audio subdirectory under the output dir
+        audio_dir = os.path.join(output_dir, "audio")
+        downloader = VideoDownloader(output_dir=audio_dir)
         audio_path, metadata = downloader.download_audio(url)
 
         # Step 2: Transcribe
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("STEP 2: Transcribing Audio")
-        print("="*60)
+        print("=" * 60)
         transcriber = Transcriber(
             model_name=whisper_model,
             model_dir="./models",
@@ -121,14 +126,15 @@ def process_video(
 
         # Save transcript
         filename_base = sanitize_filename(metadata['title'])
-        transcript_path = ensure_output_path(output_dir, f"{filename_base}-transcript.md")
+        transcript_output_dir = os.path.join(output_dir, "transcripts")
+        transcript_path = ensure_output_path(transcript_output_dir, f"{filename_base}-transcript.md")
         create_transcript_markdown(metadata, transcript_with_timestamps, transcript_path)
 
         # Step 3: Extract (optional)
         if not no_extract:
-            print("\n" + "="*60)
+            print("\n" + "=" * 60)
             print("STEP 3: Extracting Key Information")
-            print("="*60)
+            print("=" * 60)
 
             # Get API key based on LLM type
             if llm_type == "claude":
@@ -148,29 +154,37 @@ def process_video(
             summary = extractor.extract(full_text, metadata)
 
             # Save summary
-            summary_path = ensure_output_path(output_dir, f"{filename_base}-summary.md")
+            summary_output_dir = os.path.join(output_dir, "summaries")
+            summary_path = ensure_output_path(summary_output_dir, f"{filename_base}-summary.md")
             create_summary_markdown(metadata, summary, summary_path)
 
         # Cleanup
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Cleaning up...")
-        print("="*60)
+        print("=" * 60)
         downloader.cleanup_audio(audio_path)
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("COMPLETE!")
-        print("="*60)
+        print("=" * 60)
         print(f"Transcript: {transcript_path}")
         if not no_extract:
             print(f"Summary: {summary_path}")
 
     except Exception as e:
         print(f"\nError: {str(e)}", file=sys.stderr)
+        if raise_on_error:
+            raise
         sys.exit(1)
 
 
 def main():
     """Main CLI entry point."""
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     parser = argparse.ArgumentParser(
         description="Transcribe YouTube videos and extract key information",
         formatter_class=argparse.RawDescriptionHelpFormatter,

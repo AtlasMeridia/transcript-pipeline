@@ -1,9 +1,13 @@
 """YouTube video downloader using yt-dlp."""
 
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Optional
+
 import yt_dlp
+
+logger = logging.getLogger(__name__)
 
 
 class VideoDownloader:
@@ -70,7 +74,7 @@ class VideoDownloader:
             Exception: If download fails
         """
         # First get metadata
-        print("Fetching video information...")
+        logger.info("Fetching video information...")
         metadata = self.get_video_info(url)
 
         # Determine output filename
@@ -93,7 +97,7 @@ class VideoDownloader:
         }
 
         try:
-            print(f"Downloading audio from: {metadata['title']}")
+            logger.info("Downloading audio from: %s", metadata["title"])
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
@@ -103,7 +107,7 @@ class VideoDownloader:
             if not audio_file.exists():
                 raise Exception(f"Downloaded file not found: {audio_file}")
 
-            print(f"Audio downloaded successfully: {audio_file}")
+            logger.info("Audio downloaded successfully: %s", audio_file)
             return str(audio_file), metadata
 
         except Exception as e:
@@ -119,6 +123,6 @@ class VideoDownloader:
         try:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
-                print(f"Cleaned up audio file: {audio_path}")
+                logger.info("Cleaned up audio file: %s", audio_path)
         except Exception as e:
-            print(f"Warning: Failed to cleanup audio file: {e}")
+            logger.warning("Failed to cleanup audio file: %s", e)

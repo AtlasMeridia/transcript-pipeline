@@ -1,13 +1,21 @@
 """AI-based information extraction from transcripts."""
 
-from typing import Dict, Optional
+import logging
+from typing import Dict, List, Optional
+
 from anthropic import Anthropic
 from openai import OpenAI
+
 from .utils import retry_with_backoff
+
+logger = logging.getLogger(__name__)
 
 
 class TranscriptExtractor:
     """Extracts key information from transcripts using AI."""
+
+    # Rough character budget per chunk to keep prompts within context limits
+    MAX_CHARS_PER_CHUNK = 8000
 
     EXTRACTION_PROMPT = """You are analyzing a transcript from a YouTube video. Your task is to extract the most relevant and important information.
 
@@ -28,6 +36,35 @@ Video Metadata:
 
 Transcript:
 {transcript}
+"""
+
+    CHUNK_SUMMARY_PROMPT = """You are analyzing PART {index} of {total} from a longer video transcript.
+
+Summarize this part concisely in Markdown with:
+- Short section title
+- 5–10 bullet point key ideas
+- Any especially important quotes (with timestamps if present)
+
+Transcript part:
+{transcript_part}
+"""
+
+    FINAL_SUMMARY_PROMPT = """You are given high-level summaries of multiple parts of a longer video transcript.
+
+Using ONLY the information below, produce a single, coherent Markdown summary for the entire video with:
+1. **Executive Summary** (2-3 sentences)
+2. **Key Points** (bullet points)
+3. **Important Quotes** (with timestamps if available)
+4. **Main Topics** (bullet points)
+5. **Actionable Insights** (numbered list)
+
+Video Metadata:
+- Title: {title}
+- Author: {author}
+- Duration: {duration}
+
+Part summaries:
+{part_summaries}
 """
 
     def __init__(self, llm_type: str = "claude", api_key: Optional[str] = None):
@@ -64,19 +101,87 @@ Transcript:
         """
         from .utils import format_duration
 
-        # Prepare the prompt
-        prompt = self.EXTRACTION_PROMPT.format(
-            title=metadata.get('title', 'Unknown'),
-            author=metadata.get('author', 'Unknown'),
-            duration=format_duration(metadata.get('duration', 0)),
-            transcript=transcript
+        title = metadata.get("title", "Unknown")
+        author = metadata.get("author", "Unknown")
+        duration_str = format_duration(metadata.get("duration", 0))
+
+        # Simple path for shorter transcripts: single extraction call
+        if len(transcript) <= self.MAX_CHARS_PER_CHUNK:
+            prompt = self.EXTRACTION_PROMPT.format(
+                title=title,
+                author=author,
+                duration=duration_str,
+                transcript=transcript,
+            )
+            if self.llm_type == "claude":
+                return self._extract_with_claude(prompt)
+            else:
+                return self._extract_with_gpt(prompt)
+
+        # For long transcripts, do a hierarchical summarization:
+        # 1) summarize each chunk, 2) summarize across chunk summaries.
+        logger.info("Transcript is long; using chunked hierarchical extraction...")
+        chunks = self._split_transcript(transcript)
+
+        part_summaries: List[str] = []
+        total_parts = len(chunks)
+        for idx, chunk in enumerate(chunks, start=1):
+            logger.info("Summarizing transcript chunk %d/%d...", idx, total_parts)
+            part_prompt = self.CHUNK_SUMMARY_PROMPT.format(
+                index=idx,
+                total=total_parts,
+                transcript_part=chunk,
+            )
+            if self.llm_type == "claude":
+                summary_part = self._extract_with_claude(part_prompt)
+            else:
+                summary_part = self._extract_with_gpt(part_prompt)
+            part_summaries.append(summary_part.strip())
+
+        combined_prompt = self.FINAL_SUMMARY_PROMPT.format(
+            title=title,
+            author=author,
+            duration=duration_str,
+            part_summaries="\n\n".join(part_summaries),
         )
 
-        # Extract using the appropriate LLM
+        logger.info("Combining chunk summaries into final extraction...")
         if self.llm_type == "claude":
-            return self._extract_with_claude(prompt)
+            return self._extract_with_claude(combined_prompt)
         else:
-            return self._extract_with_gpt(prompt)
+            return self._extract_with_gpt(combined_prompt)
+
+    def _split_transcript(self, transcript: str) -> List[str]:
+        """
+        Split a long transcript into roughly MAX_CHARS_PER_CHUNK chunks,
+        preferring to break on paragraph boundaries.
+        """
+        if not transcript:
+            return [""]
+
+        paragraphs = transcript.split("\n\n")
+        chunks: List[str] = []
+        current: List[str] = []
+        current_len = 0
+
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+
+            # If adding this paragraph would exceed the limit, start a new chunk
+            if current and current_len + len(para) + 2 > self.MAX_CHARS_PER_CHUNK:
+                chunks.append("\n\n".join(current))
+                current = [para]
+                current_len = len(para)
+            else:
+                current.append(para)
+                current_len += len(para) + 2  # account for spacing
+
+        if current:
+            chunks.append("\n\n".join(current))
+
+        return chunks
 
     def _extract_with_claude(self, prompt: str) -> str:
         """
@@ -92,11 +197,11 @@ Transcript:
             Exception: If API call fails
         """
         try:
-            print("Extracting key information with Claude...")
+            logger.info("Extracting key information with Claude...")
 
             def call_claude():
                 response = self.client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model="claude-sonnet-4-5-20250929",
                     max_tokens=4000,
                     messages=[{
                         "role": "user",
@@ -111,7 +216,7 @@ Transcript:
                 exceptions=(Exception,)
             )
 
-            print("Extraction complete")
+            logger.info("Extraction with Claude complete")
             return result
 
         except Exception as e:
@@ -131,7 +236,7 @@ Transcript:
             Exception: If API call fails
         """
         try:
-            print("Extracting key information with GPT...")
+            logger.info("Extracting key information with GPT...")
 
             def call_gpt():
                 response = self.client.chat.completions.create(
@@ -154,7 +259,7 @@ Transcript:
                 exceptions=(Exception,)
             )
 
-            print("Extraction complete")
+            logger.info("Extraction with GPT complete")
             return result
 
         except Exception as e:

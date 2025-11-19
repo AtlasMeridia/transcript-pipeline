@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from dataclasses import dataclass
 from io import BytesIO
@@ -11,6 +12,8 @@ from typing import Any, Callable, Dict, List, Optional
 import whisper
 
 from .utils import format_timestamp
+
+logger = logging.getLogger(__name__)
 
 try:
     from elevenlabs.client import ElevenLabs
@@ -81,7 +84,7 @@ class Transcriber:
         if not self.elevenlabs_api_key:
             raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
         if self._scribe_client is None:
-            print("Initializing ElevenLabs Scribe client...")
+            logger.info("Initializing ElevenLabs Scribe client...")
             self._scribe_client = ElevenLabs(api_key=self.elevenlabs_api_key)
         return self._scribe_client
 
@@ -230,7 +233,7 @@ class Transcriber:
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[Segment]:
         client = self._ensure_scribe_client()
-        print(f"Transcribing with ElevenLabs Scribe ({self.scribe_model_id})...")
+        logger.info("Transcribing with ElevenLabs Scribe (%s)...", self.scribe_model_id)
 
         with open(audio_path, "rb") as audio_file:
             audio_bytes = audio_file.read()
@@ -248,15 +251,28 @@ class Transcriber:
         if not segments:
             raise RuntimeError("ElevenLabs Scribe returned no transcript segments.")
 
-        print(f"Scribe transcription complete: {len(segments)} segments")
+        logger.info("Scribe transcription complete: %d segments", len(segments))
         return segments
 
     # ------------------------------------------------------------------- Whisper
     def _ensure_whisper_model(self) -> None:
         if self._whisper_model is None:
-            print(f"Loading Whisper model: {self.model_name}")
+            logger.info("Loading Whisper model: %s", self.model_name)
             self._whisper_model = whisper.load_model(self.model_name, download_root=self.model_dir)
-            print("Whisper model loaded successfully")
+            logger.info("Whisper model loaded successfully")
+
+    def _load_audio_and_duration(self, audio_path: str) -> tuple[Any, float, int]:
+        """
+        Load audio with Whisper helper and return (audio_array, duration_seconds, sample_rate).
+
+        This keeps duration calculation consistent with Whisper's own preprocessing.
+        """
+        audio = whisper.load_audio(audio_path)
+        # Whisper uses a fixed SAMPLE_RATE internally
+        sample_rate = whisper.audio.SAMPLE_RATE  # type: ignore[attr-defined]
+        total_samples = audio.shape[-1]
+        duration = total_samples / float(sample_rate)
+        return audio, duration, sample_rate
 
     def _transcribe_with_whisper(
         self,
@@ -265,25 +281,92 @@ class Transcriber:
         progress_callback: Optional[Callable[[int, int], None]] = None,
     ) -> List[Segment]:
         self._ensure_whisper_model()
-        print("Transcribing with Whisper fallback...")
+        logger.info("Transcribing with Whisper fallback...")
 
         options = {"task": "transcribe", "verbose": False}
         if language:
             options["language"] = language
 
-        result = self._whisper_model.transcribe(audio_path, **options)
+        # Load audio and decide whether to chunk based on duration
+        audio, duration, sample_rate = self._load_audio_and_duration(audio_path)
+
+        # For short audio, transcribe in a single pass
+        if duration <= self.MAX_CHUNK_DURATION:
+            result = self._whisper_model.transcribe(audio_path, **options)
+
+            segments: List[Segment] = []
+            for segment in result.get("segments", []):
+                segments.append(
+                    Segment(
+                        start=float(segment["start"]),
+                        end=float(segment["end"]),
+                        text=segment["text"].strip(),
+                    )
+                )
+
+            logger.info("Whisper transcription complete: %d segments", len(segments))
+            return segments
+
+        # For long audio, transcribe in deterministic chunks with overlap
+        logger.info(
+            "Audio duration %.1fs exceeds max chunk duration %ss. Using chunked Whisper transcription...",
+            duration,
+            self.MAX_CHUNK_DURATION,
+        )
+
+        max_chunk_samples = int(self.MAX_CHUNK_DURATION * sample_rate)
+        overlap_samples = int(self.CHUNK_OVERLAP * sample_rate)
+        total_samples = audio.shape[-1]
 
         segments: List[Segment] = []
-        for segment in result.get("segments", []):
-            segments.append(
-                Segment(
-                    start=float(segment["start"]),
-                    end=float(segment["end"]),
-                    text=segment["text"].strip(),
-                )
-            )
+        chunk_start_sample = 0
+        chunk_index = 0
 
-        print(f"Whisper transcription complete: {len(segments)} segments")
+        # Estimate total chunks for progress reporting
+        effective_chunk = max_chunk_samples - overlap_samples if max_chunk_samples > overlap_samples else max_chunk_samples
+        total_chunks = max(1, (total_samples + effective_chunk - 1) // effective_chunk)
+
+        last_text: Optional[str] = None
+
+        while chunk_start_sample < total_samples:
+            chunk_end_sample = min(chunk_start_sample + max_chunk_samples, total_samples)
+            chunk_audio = audio[chunk_start_sample:chunk_end_sample]
+            base_offset = chunk_start_sample / float(sample_rate)
+
+            if progress_callback:
+                progress_callback(chunk_index + 1, total_chunks)
+
+            chunk_result = self._whisper_model.transcribe(chunk_audio, **options)
+
+            for segment in chunk_result.get("segments", []):
+                text = segment.get("text", "").strip()
+                if not text:
+                    continue
+
+                # Adjust timestamps by chunk offset
+                start = base_offset + float(segment["start"])
+                end = base_offset + float(segment["end"])
+
+                # Simple deduplication across overlaps: skip if text
+                # repeats exactly from the previous segment
+                if last_text is not None and text == last_text:
+                    continue
+
+                segments.append(Segment(start=start, end=end, text=text))
+                last_text = text
+
+            if chunk_end_sample == total_samples:
+                break
+
+            # Move start forward, keeping an overlap
+            chunk_start_sample = chunk_end_sample - overlap_samples
+            chunk_index += 1
+
+        logger.info(
+            "Whisper chunked transcription complete: %d segments across %d chunks",
+            len(segments),
+            chunk_index + 1,
+        )
         return segments
 
     # -------------------------------------------------------------------- Public

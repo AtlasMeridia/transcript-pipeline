@@ -37,7 +37,7 @@ transcript-pipeline/
 ## Prerequisites
 
 - Docker and Docker Compose
-- (Optional for local run) Python 3.11+
+- (Optional for local run) Python 3.11 - 3.13 (Python 3.14+ not supported)
 - API key for Claude (Anthropic) or GPT (OpenAI)
 - ElevenLabs API key for Scribe v2 Realtime transcription (default engine)
 

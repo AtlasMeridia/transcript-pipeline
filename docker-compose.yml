@@ -17,6 +17,9 @@ services:
       - DEFAULT_LLM=${DEFAULT_LLM:-claude}
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - OUTPUT_DIR=/app/output
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-scribe}
+      - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}
     # Prevent container from exiting immediately
     stdin_open: true
     tty: true

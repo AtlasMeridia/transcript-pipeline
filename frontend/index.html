@@ -22,6 +22,8 @@
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   
   <script type="text/babel" data-type="module">
     // Inline the React component for standalone testing
@@ -236,6 +238,8 @@
       const [error, setError] = useState(null);
       const [config, setConfig] = useState(null);
       const [currentJobId, setCurrentJobId] = useState(null);
+      const [previewMode, setPreviewMode] = useState(true); // true = preview, false = raw
+      const [activeTab, setActiveTab] = useState('transcript'); // 'transcript' or 'summary'
 
       const phases = ['download', 'transcribing', 'extracting', 'complete'];
 
@@ -317,6 +321,89 @@
           @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap');
           * { box-sizing: border-box; }
           ::placeholder { color: rgba(232, 168, 76, 0.3); }
+          
+          /* Markdown preview styles */
+          .markdown-preview {
+            font-family: "JetBrains Mono", monospace;
+          }
+          .markdown-preview h1, .markdown-preview h2, .markdown-preview h3 {
+            font-family: "Instrument Serif", Georgia, serif;
+            color: #E8DCC8;
+            margin-top: 24px;
+            margin-bottom: 12px;
+            font-weight: 400;
+          }
+          .markdown-preview h1 {
+            font-size: 28px;
+            border-bottom: 1px solid rgba(232, 168, 76, 0.2);
+            padding-bottom: 8px;
+          }
+          .markdown-preview h2 {
+            font-size: 22px;
+          }
+          .markdown-preview h3 {
+            font-size: 18px;
+          }
+          .markdown-preview p {
+            font-family: "JetBrains Mono", monospace;
+            margin-bottom: 12px;
+            color: #E8DCC8;
+          }
+          .markdown-preview strong {
+            color: #E8A84C;
+            font-weight: 600;
+          }
+          .markdown-preview code {
+            background: rgba(232, 168, 76, 0.1);
+            border: 1px solid rgba(232, 168, 76, 0.2);
+            border-radius: 3px;
+            padding: 2px 6px;
+            font-family: "JetBrains Mono", monospace;
+            font-size: 0.9em;
+            color: #E8A84C;
+          }
+          .markdown-preview pre {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(232, 168, 76, 0.2);
+            border-radius: 4px;
+            padding: 16px;
+            overflow-x: auto;
+            margin-bottom: 16px;
+          }
+          .markdown-preview pre code {
+            background: transparent;
+            border: none;
+            padding: 0;
+            color: #E8DCC8;
+          }
+          .markdown-preview ul, .markdown-preview ol {
+            font-family: "JetBrains Mono", monospace;
+            margin-bottom: 12px;
+            padding-left: 24px;
+          }
+          .markdown-preview li {
+            margin-bottom: 6px;
+          }
+          .markdown-preview blockquote {
+            font-family: "Instrument Serif", Georgia, serif;
+            border-left: 3px solid rgba(232, 168, 76, 0.3);
+            padding-left: 16px;
+            margin-left: 0;
+            color: rgba(232, 168, 76, 0.8);
+            font-style: italic;
+          }
+          .markdown-preview a {
+            color: #4CE8A8;
+            text-decoration: underline;
+          }
+          .markdown-preview a:hover {
+            color: #E8A84C;
+          }
+          .markdown-preview hr {
+            border: none;
+            border-top: 1px solid rgba(232, 168, 76, 0.2);
+            margin: 24px 0;
+          }
         `),
         
         React.createElement('div', { style: { maxWidth: '900px', margin: '0 auto' } },
@@ -497,34 +584,134 @@
                   marginBottom: '16px',
                 }
               }, results.title),
-              React.createElement('div', { style: { display: 'flex', gap: '12px' } },
+              
+              // Tabs and controls
+              React.createElement('div', {
+                style: {
+                  display: 'flex',
+                  gap: '12px',
+                  marginBottom: '20px',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                }
+              },
+                // Tab buttons
+                React.createElement('div', {
+                  style: {
+                    display: 'flex',
+                    gap: '4px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '4px',
+                    padding: '4px',
+                  }
+                },
+                  React.createElement('button', {
+                    onClick: () => setActiveTab('transcript'),
+                    style: {
+                      background: activeTab === 'transcript' ? 'rgba(232, 168, 76, 0.2)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '8px 16px',
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: '11px',
+                      color: activeTab === 'transcript' ? '#E8A84C' : 'rgba(232, 168, 76, 0.5)',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }
+                  }, 'Transcript'),
+                  results.summary && React.createElement('button', {
+                    onClick: () => setActiveTab('summary'),
+                    style: {
+                      background: activeTab === 'summary' ? 'rgba(76, 232, 168, 0.2)' : 'transparent',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '8px 16px',
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontSize: '11px',
+                      color: activeTab === 'summary' ? '#4CE8A8' : 'rgba(76, 232, 168, 0.5)',
+                      cursor: 'pointer',
+                      textTransform: 'uppercase',
+                    }
+                  }, 'Summary')
+                ),
+                
+                // Preview toggle
+                React.createElement('button', {
+                  onClick: () => setPreviewMode(!previewMode),
+                  style: {
+                    background: previewMode ? 'rgba(76, 232, 168, 0.1)' : 'rgba(232, 168, 76, 0.1)',
+                    border: `1px solid ${previewMode ? 'rgba(76, 232, 168, 0.2)' : 'rgba(232, 168, 76, 0.2)'}`,
+                    borderRadius: '4px',
+                    padding: '8px 16px',
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: '11px',
+                    color: previewMode ? '#4CE8A8' : '#E8A84C',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase',
+                    marginLeft: 'auto',
+                  }
+                }, previewMode ? '👁 Preview' : '📝 Raw'),
+                
+                // Download buttons
                 React.createElement('a', {
                   href: api.getDownloadUrl(currentJobId, 'transcript'),
                   style: {
                     background: 'rgba(232, 168, 76, 0.1)',
                     border: '1px solid rgba(232, 168, 76, 0.2)',
                     borderRadius: '4px',
-                    padding: '12px 20px',
+                    padding: '8px 16px',
                     fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     color: '#E8A84C',
                     textDecoration: 'none',
+                    textTransform: 'uppercase',
                   }
-                }, '↓ Download Transcript'),
+                }, '↓ Download'),
                 results.summary && React.createElement('a', {
                   href: api.getDownloadUrl(currentJobId, 'summary'),
                   style: {
                     background: 'rgba(76, 232, 168, 0.1)',
                     border: '1px solid rgba(76, 232, 168, 0.2)',
                     borderRadius: '4px',
-                    padding: '12px 20px',
+                    padding: '8px 16px',
                     fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: '12px',
+                    fontSize: '11px',
                     color: '#4CE8A8',
                     textDecoration: 'none',
+                    textTransform: 'uppercase',
                   }
-                }, '↓ Download Summary')
-              )
+                }, '↓ Download')
+              ),
+              
+              // Content display
+              React.createElement('div', {
+                className: previewMode ? 'markdown-preview' : '',
+                style: {
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(232, 168, 76, 0.1)',
+                  borderRadius: '4px',
+                  padding: '20px',
+                  maxHeight: '600px',
+                  overflowY: 'auto',
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: previewMode ? '13px' : '12px',
+                  lineHeight: previewMode ? '1.7' : '1.5',
+                  color: '#E8DCC8',
+                },
+                dangerouslySetInnerHTML: previewMode ? {
+                  __html: window.marked ? window.marked.parse(
+                    activeTab === 'transcript' ? (results.transcript || '') : (results.summary || '')
+                  ) : (activeTab === 'transcript' ? (results.transcript || '') : (results.summary || ''))
+                } : undefined
+              }, previewMode ? null : (
+                React.createElement('pre', {
+                  style: {
+                    margin: 0,
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                  }
+                }, activeTab === 'transcript' ? (results.transcript || '') : (results.summary || ''))
+              ))
             )
           )
         )

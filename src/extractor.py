@@ -99,12 +99,12 @@ Part summaries:
             self.model_id = self.model_id or DEFAULT_CLAUDE_MODEL
             replacement = DEPRECATED_CLAUDE_MODELS.get(self.model_id)
             if replacement:
-                print(
-                    f"Warning: Claude model '{self.model_id}' is deprecated or unavailable. "
+                logger.warning(
+                    f"Claude model '{self.model_id}' is deprecated or unavailable. "
                     f"Switching to '{replacement}'."
                 )
                 self.model_id = replacement
-            print(f"Using Claude model: {self.model_id}")
+            logger.info(f"Using Claude model: {self.model_id}")
             self.client = Anthropic(api_key=api_key)
         elif self.llm_type == "gpt":
             self.model_id = self.model_id or DEFAULT_GPT_MODEL

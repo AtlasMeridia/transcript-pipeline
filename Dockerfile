@@ -24,15 +24,17 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src/ ./src/
+COPY server.py .
 
 # Create directories for output and models
 RUN mkdir -p /app/output /app/models
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 ENV WHISPER_CACHE_DIR=/app/models
 
-# Create entry point script
+# Create entry point script for CLI mode
 RUN echo '#!/bin/bash\n\
 set -e\n\
 \n\
@@ -47,4 +49,8 @@ fi\n\
 exec python -m src.main "$@"\n\
 ' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-ENTRYPOINT ["/app/entrypoint.sh"]
+EXPOSE 8000
+
+# Default: API server mode
+# Use --profile cli with docker-compose for CLI mode
+CMD ["python", "-m", "uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8000"]

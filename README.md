@@ -1,36 +1,44 @@
 # Transcript Pipeline
 
-A Dockerized Python CLI tool that transcribes YouTube videos using local Whisper model and extracts key information using AI (Claude or GPT).
+A Dockerized Python tool that transcribes YouTube videos and extracts key information using AI. Available as both a **CLI tool** and a **web interface** with REST API.
 
 ## Features
 
-- Download audio from YouTube videos
-- Transcribe using [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) by default
-- Automatic Whisper fallback for offline or backup transcription
-- Extract key information using Claude or GPT
-- Generate formatted markdown files
-- Fully containerized with Docker
-- Easy to transport between systems
+- **Dual Interface**: Command-line tool and web-based UI with REST API
+- **Smart Transcription**: Uses [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) by default with automatic Whisper fallback
+- **Chunked Processing**: Handles long videos (>30 min) with intelligent chunking and overlap
+- **AI Extraction**: Extracts key insights using Claude or GPT with hierarchical summarization for long content
+- **Real-time Progress**: Web interface shows live progress via Server-Sent Events
+- **Fully Containerized**: Easy Docker deployment with both CLI and API modes
+- **Library-style API**: `process_video()` can be imported and reused programmatically
 
 ## Project Structure
 
 ```
 transcript-pipeline/
 ├── Dockerfile              # Docker image configuration
-├── docker-compose.yml      # Docker Compose setup
+├── docker-compose.yml      # Docker Compose setup (API + CLI services)
 ├── requirements.txt        # Python dependencies
+├── server.py              # FastAPI web server
 ├── .env.example           # Environment variables template
 ├── .gitignore             # Git ignore rules
-├── PLAN.md                # Implementation plan
 ├── README.md              # This file
 ├── src/
 │   ├── __init__.py
 │   ├── main.py            # CLI entry point
 │   ├── downloader.py      # YouTube audio download
-│   ├── transcriber.py     # Whisper transcription
+│   ├── transcriber.py     # Scribe/Whisper transcription
 │   ├── extractor.py       # AI extraction
 │   └── utils.py           # Helper functions
-├── output/                # Generated markdown files (gitignored)
+├── frontend/
+│   └── index.html         # Web interface (standalone HTML)
+├── tests/                 # Test suite
+│   ├── test_utils.py
+│   └── test_transcriber_scribe_parsing.py
+├── output/                # Generated files (gitignored)
+│   ├── audio/             # Temporary audio files
+│   ├── transcripts/       # Transcript markdown files
+│   └── summaries/         # Summary markdown files
 └── models/                # Whisper model cache (gitignored)
 ```
 
@@ -57,7 +65,7 @@ Copy the example environment file and add your API keys:
 cp .env.example .env
 ```
 
-Edit `.env` and add your API key(s):
+Edit `.env` and add your API keys (see `.env.example` for all available options):
 
 ```bash
 # ElevenLabs Scribe (default transcription engine)
@@ -96,13 +104,39 @@ This will:
 
 ## Usage
 
-### Docker (Recommended)
+### Web Interface (Recommended for Interactive Use)
 
-Process a single YouTube video:
+Start the API server:
 
 ```bash
-docker-compose run --rm transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
+docker-compose up transcript-api
 ```
+
+The API will be available at `http://localhost:8000`
+
+Open the web interface:
+- Option 1: Open `frontend/index.html` directly in your browser
+- Option 2: Serve it with a static server:
+  ```bash
+  cd frontend && python -m http.server 3000
+  # Then open http://localhost:3000
+  ```
+
+The web interface provides:
+- Real-time progress updates via Server-Sent Events
+- Interactive job management
+- Direct download of transcripts and summaries
+- Configuration display
+
+### CLI Mode
+
+Process a single YouTube video via command line:
+
+```bash
+docker-compose run --rm --profile cli transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
+```
+
+> **Note**: The `--profile cli` flag is required for CLI mode. Without it, docker-compose will try to start the API server.
 
 > The CLI streams audio to ElevenLabs Scribe v2 Realtime when `ELEVENLABS_API_KEY` is configured. Use `--engine whisper` to force the local Whisper fallback.
 
@@ -110,16 +144,16 @@ With custom options:
 
 ```bash
 # Use a different Whisper model
-docker-compose run --rm transcript-pipeline https://youtu.be/VIDEO_ID --model small
+docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --model small
 
 # Use GPT instead of Claude
-docker-compose run --rm transcript-pipeline https://youtu.be/VIDEO_ID --llm gpt
+docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --llm gpt
 
 # Only transcribe (skip AI extraction)
-docker-compose run --rm transcript-pipeline https://youtu.be/VIDEO_ID --no-extract
+docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --no-extract
 
 # Custom output directory
-docker-compose run --rm transcript-pipeline https://youtu.be/VIDEO_ID --output-dir /app/output/my-folder
+docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --output-dir /app/output/my-folder
 ```
 
 ### Local Python (Alternative)
@@ -130,18 +164,81 @@ If you prefer to run without Docker:
 # Install dependencies
 pip install -r requirements.txt
 
-# Run
+# Run CLI
 python -m src.main https://www.youtube.com/watch?v=VIDEO_ID
+
+# Run API server
+python -m uvicorn server:app --host 0.0.0.0 --port 8000
 ```
+
+### REST API
+
+The API server provides REST endpoints for programmatic access:
+
+**Start Processing:**
+```bash
+POST /api/process
+Content-Type: application/json
+
+{
+  "url": "https://youtube.com/watch?v=VIDEO_ID",
+  "whisper_model": "base",        # optional
+  "llm_type": "claude",            # optional
+  "transcription_engine": "scribe", # optional
+  "extract": true                  # optional
+}
+
+# Returns: {"job_id": "abc123", "status": "pending", ...}
+```
+
+**Get Job Status:**
+```bash
+GET /api/jobs/{job_id}
+
+# Returns: {"job_id": "abc123", "status": "complete", "transcript_path": "...", ...}
+```
+
+**Stream Progress (Server-Sent Events):**
+```bash
+GET /api/jobs/{job_id}/stream
+
+# Returns SSE stream with real-time updates
+```
+
+**Download Files:**
+```bash
+GET /api/jobs/{job_id}/download/transcript
+GET /api/jobs/{job_id}/download/summary
+```
+
+**Get Configuration:**
+```bash
+GET /api/config
+
+# Returns: {"whisper_model": "base", "default_llm": "claude", "has_elevenlabs_key": true, ...}
+```
+
+**Interactive API Documentation:**
+Visit `http://localhost:8000/docs` when the server is running for Swagger UI with interactive testing.
 
 ## Output Files
 
-The tool generates two markdown files in the `output/` directory:
+The tool generates organized output files in the `output/` directory:
 
-### 1. Transcript: `{video-title}-transcript.md`
+```
+output/
+├── audio/                    # Temporary audio files (cleaned up after processing)
+├── transcripts/              # Transcript markdown files
+│   └── {video-title}-transcript.md
+└── summaries/               # Summary markdown files
+    └── {video-title}-summary.md
+```
+
+### 1. Transcript: `transcripts/{video-title}-transcript.md`
 
 Contains:
-- Video metadata (title, author, date, duration)
+- Video metadata (title, author, date, duration, URL)
+- Video description (truncated to 500 chars)
 - Full transcript with timestamps
 
 Example:
@@ -153,18 +250,21 @@ Example:
 **URL**: https://www.youtube.com/watch?v=...
 **Duration**: 15m 30s
 
+## Description
+This video covers the fundamentals of machine learning...
+
 ## Transcript
 
 [00:00:00] Welcome to this introduction to machine learning...
 [00:00:15] Today we'll cover the basics of supervised learning...
 ```
 
-### 2. Summary: `{video-title}-summary.md`
+### 2. Summary: `summaries/{video-title}-summary.md`
 
 Contains AI-extracted information:
 - Executive summary
 - Key points
-- Important quotes
+- Important quotes (with timestamps)
 - Main topics
 - Actionable insights
 
@@ -219,6 +319,22 @@ Optional arguments:
 
 **Recommendation**: Start with `base` for a good balance of speed and accuracy.
 
+## Docker Services
+
+The `docker-compose.yml` provides two services:
+
+1. **`transcript-api`** (default): Runs the FastAPI web server on port 8000
+   ```bash
+   docker-compose up transcript-api
+   ```
+
+2. **`transcript-pipeline`** (CLI profile): Command-line interface
+   ```bash
+   docker-compose run --rm --profile cli transcript-pipeline <url>
+   ```
+
+Both services share the same Docker image and environment variables.
+
 ## Transporting Between Systems
 
 ### Export the Docker Image
@@ -244,8 +360,11 @@ docker load -i transcript-pipeline.tar
 # - .env (with your API keys)
 # - models/ directory (optional, saves re-download time)
 
-# Run
-docker-compose run --rm transcript-pipeline <youtube-url>
+# Run API server
+docker-compose up transcript-api
+
+# Or run CLI
+docker-compose run --rm --profile cli transcript-pipeline <youtube-url>
 ```
 
 ### Or Use Docker Hub
@@ -257,7 +376,7 @@ docker push yourusername/transcript-pipeline:latest
 
 # Pull and run (on target system)
 docker pull yourusername/transcript-pipeline:latest
-docker-compose run --rm transcript-pipeline <youtube-url>
+docker-compose up transcript-api
 ```
 
 ## Troubleshooting
@@ -277,6 +396,8 @@ Make sure your `.env` file contains the correct API key:
 - `ANTHROPIC_API_KEY` for Claude
 - `OPENAI_API_KEY` for GPT
 - `ELEVENLABS_API_KEY` for Scribe
+
+See `.env.example` for a complete list of configuration options.
 
 ### Whisper model download fails
 
@@ -298,6 +419,18 @@ If Scribe requests fail or you are offline:
 2. Check your ElevenLabs usage limits.
 3. Rerun with `--engine whisper` to stay fully local.
 
+### CORS errors in production
+
+If deploying the web interface, configure CORS origins via the `CORS_ORIGINS` environment variable:
+
+```bash
+# Allow specific origins (comma-separated)
+CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
+
+# Or allow all origins (development only, not recommended for production)
+CORS_ORIGINS=*
+```
+
 ### ffmpeg not found (local Python)
 
 Install ffmpeg:
@@ -317,7 +450,7 @@ Create a script to process multiple videos:
 
 while IFS= read -r url; do
     echo "Processing: $url"
-    docker-compose run --rm transcript-pipeline "$url"
+    docker-compose run --rm --profile cli transcript-pipeline "$url"
 done < video-urls.txt
 ```
 
@@ -327,9 +460,43 @@ chmod +x process-videos.sh
 ./process-videos.sh
 ```
 
+### Programmatic Usage
+
+The `process_video()` function can be imported and used as a library:
+
+```python
+from src.main import process_video
+
+result = process_video(
+    url="https://youtube.com/watch?v=VIDEO_ID",
+    whisper_model="base",
+    llm_type="claude",
+    output_dir="./output",
+    transcription_engine="scribe",
+    elevenlabs_api_key="your_key",
+    scribe_model_id="scribe_v2",
+    raise_on_error=True  # Returns result dict instead of exiting
+)
+
+if result['success']:
+    print(f"Transcript: {result['transcript_path']}")
+    print(f"Summary: {result['summary_path']}")
+else:
+    print(f"Error: {result['error']}")
+```
+
 ### Custom Extraction Prompts
 
-To customize the extraction prompt, edit `src/extractor.py` and modify the `EXTRACTION_PROMPT` variable.
+To customize the extraction prompt, edit `src/extractor.py` and modify:
+- `EXTRACTION_PROMPT` - Single-pass extraction for short transcripts
+- `CHUNK_SUMMARY_PROMPT` - Per-chunk summarization for long transcripts
+- `FINAL_SUMMARY_PROMPT` - Final synthesis across chunk summaries
+
+### Long Video Handling
+
+The pipeline automatically handles long videos:
+- **Transcription**: Videos >30 minutes are chunked with 5-second overlaps
+- **Extraction**: Transcripts >8000 characters use hierarchical summarization (chunk summaries → final summary)
 
 ## License
 
@@ -339,10 +506,29 @@ This project is provided as-is for educational and personal use.
 
 Contributions welcome! Please test thoroughly before submitting pull requests.
 
+## Testing
+
+Run the test suite:
+
+```bash
+# With Docker (run pytest in the container)
+docker-compose run --rm --profile cli transcript-pipeline python -m pytest
+
+# Local Python
+pytest
+```
+
+Tests cover:
+- Utility functions (filename sanitization, timestamps, path validation)
+- Scribe response parsing (flexible format handling)
+- Retry logic with exponential backoff
+
 ## Credits
 
 Built with:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube downloader
-- [OpenAI Whisper](https://github.com/openai/whisper) - Speech recognition
+- [ElevenLabs Scribe](https://elevenlabs.io/) - Real-time transcription
+- [OpenAI Whisper](https://github.com/openai/whisper) - Local speech recognition fallback
 - [Anthropic Claude](https://www.anthropic.com/) - AI extraction
 - [OpenAI GPT](https://openai.com/) - AI extraction
+- [FastAPI](https://fastapi.tiangolo.com/) - Web framework

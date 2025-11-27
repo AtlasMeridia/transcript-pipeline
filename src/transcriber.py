@@ -413,9 +413,9 @@ class Transcriber:
                 last_error = exc
                 engine_name = engine.capitalize()
                 if idx < len(engines_to_try) - 1:
-                    print(f"{engine_name} transcription failed ({exc}). Trying fallback engine...")
+                    logger.warning(f"{engine_name} transcription failed ({exc}). Trying fallback engine...")
                 else:
-                    print(f"{engine_name} transcription failed ({exc}). No further fallbacks configured.")
+                    logger.error(f"{engine_name} transcription failed ({exc}). No further fallbacks configured.")
 
         raise Exception(f"Transcription failed: {last_error}") from last_error
 

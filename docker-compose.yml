@@ -1,10 +1,11 @@
-version: '3.8'
-
 services:
-  transcript-pipeline:
+  # API Server (default)
+  transcript-api:
     build: .
     image: transcript-pipeline:latest
-    container_name: transcript-pipeline
+    container_name: transcript-api
+    ports:
+      - "8000:8000"
     volumes:
       # Mount output directory for generated markdown files
       - ./output:/app/output
@@ -22,9 +23,36 @@ services:
       - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-scribe}
       - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}
       - OUTPUT_DIR=/app/output
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    restart: unless-stopped
+
+  # CLI Service (use with --profile cli)
+  transcript-pipeline:
+    build: .
+    image: transcript-pipeline:latest
+    container_name: transcript-pipeline
+    profiles:
+      - cli
+    volumes:
+      # Mount output directory for generated markdown files
+      - ./output:/app/output
+      # Mount models directory for Whisper model cache
+      - ./models:/app/models
+    environment:
+      # Load environment variables from .env file
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - DEFAULT_LLM=${DEFAULT_LLM:-claude}
+      - CLAUDE_MODEL_ID=${CLAUDE_MODEL_ID:-claude-sonnet-4-5}
+      - OPENAI_MODEL_ID=${OPENAI_MODEL_ID:-gpt-4o-mini}
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-scribe}
       - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}
+      - OUTPUT_DIR=/app/output
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    # Use entrypoint for CLI mode
+    entrypoint: ["/app/entrypoint.sh"]
     # Prevent container from exiting immediately
     stdin_open: true
     tty: true

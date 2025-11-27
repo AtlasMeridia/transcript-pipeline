@@ -3,9 +3,12 @@
 import re
 import os
 import time
+import logging
 from pathlib import Path
 from typing import Optional, Callable, Any
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 
 def sanitize_filename(title: str, max_length: int = 200) -> str:
@@ -136,11 +139,11 @@ def retry_with_backoff(
         except exceptions as e:
             last_exception = e
             if attempt < max_retries - 1:
-                print(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
+                logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {delay}s...")
                 time.sleep(delay)
                 delay *= backoff_factor
             else:
-                print(f"All {max_retries} attempts failed.")
+                logger.error(f"All {max_retries} attempts failed.")
 
     raise last_exception
 

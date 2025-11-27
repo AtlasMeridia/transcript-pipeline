@@ -39,9 +39,18 @@ app = FastAPI(
 )
 
 # CORS for frontend
+# Allow origins from environment variable, default to "*" for development
+allowed_origins = os.getenv("CORS_ORIGINS", "*").split(",")
+if allowed_origins == ["*"]:
+    # Development mode: allow all origins
+    cors_origins = ["*"]
+else:
+    # Production mode: specific origins
+    cors_origins = [origin.strip() for origin in allowed_origins]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Tighten this in production
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -59,6 +68,7 @@ class ProcessRequest(BaseModel):
     url: str
     whisper_model: Optional[str] = None
     llm_type: Optional[str] = None
+    transcription_engine: Optional[str] = None
     extract: bool = True
 
 
@@ -114,13 +124,17 @@ def create_summary_markdown(metadata: dict, summary: str) -> str:
 """
 
 
-async def process_video_async(job_id: str, url: str, whisper_model: str, llm_type: str, extract: bool):
+async def process_video_async(job_id: str, url: str, whisper_model: str, llm_type: str, transcription_engine: str, extract: bool):
     """
     Process a video asynchronously, updating job status as we go.
     """
     job = jobs[job_id]
     config = load_config()
     output_dir = config.get('output_dir', './output')
+    
+    # Get transcription configuration
+    elevenlabs_api_key = config.get('elevenlabs_api_key')
+    scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
     
     try:
         # ----------------------------------------------------------------
@@ -130,10 +144,12 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
         job['phase'] = 'download'
         job['message'] = 'Fetching video metadata...'
         
-        downloader = VideoDownloader(output_dir=output_dir)
+        # Audio files go to audio subdirectory
+        audio_dir = os.path.join(output_dir, "audio")
+        downloader = VideoDownloader(output_dir=audio_dir)
         
         # Run blocking download in thread pool
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         audio_path, metadata = await loop.run_in_executor(
             None, downloader.download_audio, url
         )
@@ -154,7 +170,14 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
         job['phase'] = 'transcribing'
         job['message'] = 'Initializing transcription...'
         
-        transcriber = Transcriber(model_name=whisper_model, model_dir="./models")
+        transcriber = Transcriber(
+            model_name=whisper_model,
+            model_dir="./models",
+            engine=transcription_engine,
+            fallback_engine="whisper",
+            elevenlabs_api_key=elevenlabs_api_key,
+            scribe_model_id=scribe_model_id,
+        )
         
         job['message'] = 'Transcribing audio...'
         segments = await loop.run_in_executor(
@@ -165,9 +188,10 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
         transcript_with_timestamps = transcriber.format_transcript(segments, include_timestamps=True)
         transcript_content = create_transcript_markdown(metadata, transcript_with_timestamps)
         
-        # Save transcript file
+        # Save transcript file (in transcripts subdirectory)
         filename_base = sanitize_filename(metadata['title'])
-        transcript_path = ensure_output_path(output_dir, f"{filename_base}-transcript.md")
+        transcript_output_dir = os.path.join(output_dir, "transcripts")
+        transcript_path = ensure_output_path(transcript_output_dir, f"{filename_base}-transcript.md")
         with open(transcript_path, 'w', encoding='utf-8') as f:
             f.write(transcript_content)
         
@@ -190,7 +214,8 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
                 api_key = config.get('openai_api_key')
             
             if api_key:
-                extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key)
+                model_id = config.get('claude_model_id') if llm_type == "claude" else config.get('openai_model_id')
+                extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key, model_id=model_id)
                 full_text = transcriber.get_full_text(segments)
                 
                 job['message'] = 'Extracting key insights...'
@@ -200,8 +225,9 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
                 
                 summary_content = create_summary_markdown(metadata, summary)
                 
-                # Save summary file
-                summary_path = ensure_output_path(output_dir, f"{filename_base}-summary.md")
+                # Save summary file (in summaries subdirectory)
+                summary_output_dir = os.path.join(output_dir, "summaries")
+                summary_path = ensure_output_path(summary_output_dir, f"{filename_base}-summary.md")
                 with open(summary_path, 'w', encoding='utf-8') as f:
                     f.write(summary_content)
                 
@@ -254,6 +280,7 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
     job_id = str(uuid.uuid4())[:8]
     whisper_model = request.whisper_model or config.get('whisper_model', 'base')
     llm_type = request.llm_type or config.get('default_llm', 'claude')
+    transcription_engine = request.transcription_engine or config.get('transcription_engine', 'scribe')
     
     jobs[job_id] = {
         'job_id': job_id,
@@ -278,6 +305,7 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
         request.url,
         whisper_model,
         llm_type,
+        transcription_engine,
         request.extract
     )
     
@@ -400,6 +428,8 @@ async def get_config():
         "output_dir": config.get('output_dir', './output'),
         "has_anthropic_key": bool(config.get('anthropic_api_key')),
         "has_openai_key": bool(config.get('openai_api_key')),
+        "transcription_engine": config.get('transcription_engine', 'scribe'),
+        "has_elevenlabs_key": bool(config.get('elevenlabs_api_key')),
     }
 
 

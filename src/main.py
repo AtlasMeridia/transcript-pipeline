@@ -5,12 +5,14 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
 
 from .utils import load_config, sanitize_filename, ensure_output_path, format_duration
 from .downloader import VideoDownloader
 from .transcriber import Transcriber
 from .extractor import TranscriptExtractor
+
+logger = logging.getLogger(__name__)
 
 
 def create_transcript_markdown(metadata: dict, transcript: str, output_path: Path) -> None:
@@ -40,7 +42,7 @@ def create_transcript_markdown(metadata: dict, transcript: str, output_path: Pat
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
-    print(f"Transcript saved: {output_path}")
+    logger.info(f"Transcript saved: {output_path}")
 
 
 def create_summary_markdown(metadata: dict, summary: str, output_path: Path) -> None:
@@ -68,7 +70,7 @@ def create_summary_markdown(metadata: dict, summary: str, output_path: Path) -> 
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(content)
 
-    print(f"Summary saved: {output_path}")
+    logger.info(f"Summary saved: {output_path}")
 
 
 def process_video(
@@ -81,7 +83,7 @@ def process_video(
     scribe_model_id: str,
     no_extract: bool = False,
     raise_on_error: bool = False,
-) -> None:
+) -> Dict[str, Any]:
     """
     Process a YouTube video: download, transcribe, and extract.
 
@@ -94,23 +96,33 @@ def process_video(
         elevenlabs_api_key: API key for ElevenLabs (required for Scribe)
         scribe_model_id: ElevenLabs Scribe model identifier
         no_extract: Skip extraction step
+        raise_on_error: If True, raise exceptions instead of exiting
+
+    Returns:
+        Dictionary with keys: 'success', 'transcript_path', 'summary_path' (if extracted), 'error' (if failed)
     """
     config = load_config()
+    result: Dict[str, Any] = {
+        'success': False,
+        'transcript_path': None,
+        'summary_path': None,
+        'error': None,
+    }
 
     try:
         # Step 1: Download audio
-        print("\n" + "=" * 60)
-        print("STEP 1: Downloading Audio")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("STEP 1: Downloading Audio")
+        logger.info("=" * 60)
         # Keep media files in a dedicated audio subdirectory under the output dir
         audio_dir = os.path.join(output_dir, "audio")
         downloader = VideoDownloader(output_dir=audio_dir)
         audio_path, metadata = downloader.download_audio(url)
 
         # Step 2: Transcribe
-        print("\n" + "=" * 60)
-        print("STEP 2: Transcribing Audio")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("STEP 2: Transcribing Audio")
+        logger.info("=" * 60)
         transcriber = Transcriber(
             model_name=whisper_model,
             model_dir="./models",
@@ -132,21 +144,25 @@ def process_video(
 
         # Step 3: Extract (optional)
         if not no_extract:
-            print("\n" + "=" * 60)
-            print("STEP 3: Extracting Key Information")
-            print("=" * 60)
+            logger.info("=" * 60)
+            logger.info("STEP 3: Extracting Key Information")
+            logger.info("=" * 60)
 
             # Get API key based on LLM type
             if llm_type == "claude":
                 api_key = config.get('anthropic_api_key')
                 if not api_key:
-                    print("Warning: ANTHROPIC_API_KEY not found. Skipping extraction.")
-                    return
+                    logger.warning("ANTHROPIC_API_KEY not found. Skipping extraction.")
+                    result['success'] = True  # Transcript was successful
+                    result['transcript_path'] = str(transcript_path)
+                    return result
             else:
                 api_key = config.get('openai_api_key')
                 if not api_key:
-                    print("Warning: OPENAI_API_KEY not found. Skipping extraction.")
-                    return
+                    logger.warning("OPENAI_API_KEY not found. Skipping extraction.")
+                    result['success'] = True  # Transcript was successful
+                    result['transcript_path'] = str(transcript_path)
+                    return result
 
             # Extract information
             model_id = config.get('claude_model_id') if llm_type == "claude" else config.get('openai_model_id')
@@ -160,23 +176,37 @@ def process_video(
             create_summary_markdown(metadata, summary, summary_path)
 
         # Cleanup
-        print("\n" + "=" * 60)
-        print("Cleaning up...")
-        print("=" * 60)
+        logger.info("=" * 60)
+        logger.info("Cleaning up...")
+        logger.info("=" * 60)
         downloader.cleanup_audio(audio_path)
 
-        print("\n" + "=" * 60)
-        print("COMPLETE!")
-        print("=" * 60)
-        print(f"Transcript: {transcript_path}")
+        logger.info("=" * 60)
+        logger.info("COMPLETE!")
+        logger.info("=" * 60)
+        logger.info(f"Transcript: {transcript_path}")
         if not no_extract:
-            print(f"Summary: {summary_path}")
+            logger.info(f"Summary: {summary_path}")
+
+        result['success'] = True
+        result['transcript_path'] = str(transcript_path)
+        if not no_extract:
+            result['summary_path'] = str(summary_path)
+
+        return result
 
     except Exception as e:
-        print(f"\nError: {str(e)}", file=sys.stderr)
+        error_msg = str(e)
+        logger.error(f"Error: {error_msg}")
+        result['error'] = error_msg
         if raise_on_error:
             raise
-        sys.exit(1)
+        # For CLI usage, exit with error code (only when called from CLI)
+        # When raise_on_error=False, return result dict instead of exiting
+        if not raise_on_error and __name__ == '__main__':
+            print(f"\nError: {error_msg}", file=sys.stderr)
+            sys.exit(1)
+        return result
 
 
 def main():
@@ -248,20 +278,19 @@ Examples:
     llm_model_id = config.get('claude_model_id') if llm_type == 'claude' else config.get('openai_model_id')
 
     if transcription_engine == 'scribe' and not elevenlabs_api_key:
-        print("Warning: ELEVENLABS_API_KEY not found. Falling back to Whisper.")
+        logger.warning("ELEVENLABS_API_KEY not found. Falling back to Whisper.")
         transcription_engine = 'whisper'
 
-    print(f"""
-Transcript Pipeline
-===================
-URL: {args.url}
-Whisper Model: {whisper_model}
-Transcription Engine: {transcription_engine}
-LLM: {llm_type}
-LLM Model: {llm_model_id or '(default)'}
-Output Directory: {output_dir}
-Extract: {not args.no_extract}
-    """)
+    logger.info("Transcript Pipeline")
+    logger.info("=" * 60)
+    logger.info(f"URL: {args.url}")
+    logger.info(f"Whisper Model: {whisper_model}")
+    logger.info(f"Transcription Engine: {transcription_engine}")
+    logger.info(f"LLM: {llm_type}")
+    logger.info(f"LLM Model: {llm_model_id or '(default)'}")
+    logger.info(f"Output Directory: {output_dir}")
+    logger.info(f"Extract: {not args.no_extract}")
+    logger.info("")
 
     process_video(
         url=args.url,

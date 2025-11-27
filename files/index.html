@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcript Pipeline</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <!-- React and Babel for development -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <script type="text/babel" data-type="module">
+    // Inline the React component for standalone testing
+    // In production, this would be a bundled JS file
+    
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ============================================================================
+    // Configuration
+    // ============================================================================
+
+    const API_BASE_URL = 'http://localhost:8000';
+
+    // ============================================================================
+    // API Client
+    // ============================================================================
+
+    const api = {
+      async startProcessing(url, options = {}) {
+        const response = await fetch(`${API_BASE_URL}/api/process`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            whisper_model: options.whisperModel,
+            llm_type: options.llmType,
+            extract: options.extract !== false,
+          }),
+        });
+        if (!response.ok) throw new Error('Failed to start processing');
+        return response.json();
+      },
+
+      streamJobStatus(jobId, onUpdate, onComplete, onError) {
+        const eventSource = new EventSource(`${API_BASE_URL}/api/jobs/${jobId}/stream`);
+        
+        eventSource.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          onUpdate(data);
+          
+          if (data.status === 'complete' || data.status === 'error') {
+            eventSource.close();
+            onComplete(data);
+          }
+        };
+
+        eventSource.onerror = (error) => {
+          eventSource.close();
+          onError(error);
+        };
+
+        return () => eventSource.close();
+      },
+
+      getDownloadUrl(jobId, fileType) {
+        return `${API_BASE_URL}/api/jobs/${jobId}/download/${fileType}`;
+      },
+
+      async getConfig() {
+        const response = await fetch(`${API_BASE_URL}/api/config`);
+        if (!response.ok) throw new Error('Failed to get config');
+        return response.json();
+      },
+    };
+
+    // ============================================================================
+    // Waveform Component
+    // ============================================================================
+
+    const Waveform = ({ isActive, phase }) => {
+      const canvasRef = useRef(null);
+      const animationRef = useRef(null);
+      const timeRef = useRef(0);
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+
+        const draw = () => {
+          timeRef.current += 0.02;
+          ctx.fillStyle = 'rgba(10, 10, 8, 0.15)';
+          ctx.fillRect(0, 0, width, height);
+
+          if (isActive) {
+            ctx.strokeStyle = phase === 'transcribing' ? '#E8A84C' : 
+                              phase === 'extracting' ? '#4CE8A8' : '#E8A84C';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            for (let x = 0; x < width; x++) {
+              const frequency = phase === 'transcribing' ? 0.03 : 0.02;
+              const amplitude = phase === 'transcribing' ? 25 : 15;
+              const noise = Math.sin(x * 0.1 + timeRef.current * 3) * 5;
+              const y = height / 2 + 
+                        Math.sin(x * frequency + timeRef.current * 2) * amplitude +
+                        Math.sin(x * frequency * 2.5 + timeRef.current * 3) * (amplitude * 0.5) +
+                        noise;
+              
+              if (x === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+
+            const scanY = (timeRef.current * 50) % height;
+            ctx.strokeStyle = 'rgba(232, 168, 76, 0.1)';
+            ctx.beginPath();
+            ctx.moveTo(0, scanY);
+            ctx.lineTo(width, scanY);
+            ctx.stroke();
+          } else {
+            ctx.strokeStyle = 'rgba(232, 168, 76, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = 0; x < width; x++) {
+              const y = height / 2 + Math.random() * 2 - 1;
+              if (x === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+
+          animationRef.current = requestAnimationFrame(draw);
+        };
+
+        draw();
+        return () => cancelAnimationFrame(animationRef.current);
+      }, [isActive, phase]);
+
+      return React.createElement('canvas', {
+        ref: canvasRef,
+        width: 600,
+        height: 80,
+        style: {
+          width: '100%',
+          height: '80px',
+          borderRadius: '2px',
+          border: '1px solid rgba(232, 168, 76, 0.2)',
+        }
+      });
+    };
+
+    // ============================================================================
+    // Phase Indicator
+    // ============================================================================
+
+    const PhaseIndicator = ({ currentPhase, phases }) => {
+      const phaseIndex = phases.indexOf(currentPhase);
+      
+      return React.createElement('div', {
+        style: {
+          display: 'flex',
+          gap: '4px',
+          alignItems: 'center',
+          fontFamily: '"JetBrains Mono", monospace',
+          fontSize: '11px',
+          letterSpacing: '0.05em',
+        }
+      }, phases.map((phase, i) => React.createElement(React.Fragment, { key: phase }, 
+        React.createElement('span', {
+          style: {
+            color: i < phaseIndex ? '#4CE8A8' : 
+                   i === phaseIndex ? '#E8A84C' : 
+                   'rgba(232, 168, 76, 0.3)',
+            textTransform: 'uppercase',
+            transition: 'color 0.3s ease',
+          }
+        }, `${i < phaseIndex ? '✓ ' : i === phaseIndex ? '► ' : '○ '}${phase}`),
+        i < phases.length - 1 && React.createElement('span', {
+          style: { color: 'rgba(232, 168, 76, 0.2)' }
+        }, '—')
+      )));
+    };
+
+    // ============================================================================
+    // Log Entry
+    // ============================================================================
+
+    const LogEntry = ({ timestamp, message, type }) => React.createElement('div', {
+      style: {
+        fontFamily: '"JetBrains Mono", monospace',
+        fontSize: '12px',
+        lineHeight: '1.6',
+        display: 'flex',
+        gap: '12px',
+        opacity: type === 'dim' ? 0.5 : 1,
+      }
+    }, 
+      React.createElement('span', { style: { color: 'rgba(232, 168, 76, 0.5)' } }, timestamp),
+      React.createElement('span', { 
+        style: { 
+          color: type === 'success' ? '#4CE8A8' : 
+                 type === 'error' ? '#E84C4C' :
+                 type === 'info' ? '#4C9EE8' :
+                 '#E8DCC8' 
+        }
+      }, message)
+    );
+
+    // ============================================================================
+    // Main App
+    // ============================================================================
+
+    function TranscriptPipeline() {
+      const [url, setUrl] = useState('');
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [currentPhase, setCurrentPhase] = useState(null);
+      const [logs, setLogs] = useState([]);
+      const [results, setResults] = useState(null);
+      const [error, setError] = useState(null);
+      const [config, setConfig] = useState(null);
+      const [currentJobId, setCurrentJobId] = useState(null);
+
+      const phases = ['download', 'transcribing', 'extracting', 'complete'];
+
+      useEffect(() => {
+        api.getConfig()
+          .then(setConfig)
+          .catch(err => {
+            console.error('Failed to load config:', err);
+            setError('Cannot connect to API server. Is it running on localhost:8000?');
+          });
+      }, []);
+
+      const addLog = useCallback((message, type = 'default') => {
+        const now = new Date();
+        const timestamp = now.toTimeString().slice(0, 8);
+        setLogs(prev => [...prev, { timestamp, message, type }]);
+      }, []);
+
+      const processVideo = async () => {
+        if (!url.trim()) return;
+        
+        setIsProcessing(true);
+        setLogs([]);
+        setResults(null);
+        setError(null);
+
+        try {
+          addLog('Initializing pipeline...', 'dim');
+          
+          const job = await api.startProcessing(url);
+          setCurrentJobId(job.job_id);
+          addLog(`Job started: ${job.job_id}`, 'info');
+
+          api.streamJobStatus(
+            job.job_id,
+            (data) => {
+              setCurrentPhase(data.phase);
+              if (data.message) {
+                const logType = data.status === 'error' ? 'error' :
+                               data.status === 'complete' ? 'success' : 'info';
+                addLog(data.message, logType);
+              }
+            },
+            (data) => {
+              if (data.status === 'complete') {
+                setResults({
+                  title: data.metadata.title,
+                  transcript: data.transcript_content,
+                  summary: data.summary_content,
+                  metadata: data.metadata,
+                });
+                addLog('Pipeline complete', 'success');
+              } else if (data.status === 'error') {
+                setError(data.error);
+              }
+              setIsProcessing(false);
+            },
+            (err) => {
+              setError('Connection lost');
+              setIsProcessing(false);
+            }
+          );
+        } catch (err) {
+          setError(err.message);
+          setIsProcessing(false);
+        }
+      };
+
+      // Simplified render for standalone HTML
+      return React.createElement('div', {
+        style: {
+          minHeight: '100vh',
+          background: 'linear-gradient(180deg, #0A0A08 0%, #12120F 100%)',
+          color: '#E8DCC8',
+          padding: '60px 24px',
+        }
+      },
+        React.createElement('style', {}, `
+          @import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;600&display=swap');
+          * { box-sizing: border-box; }
+          ::placeholder { color: rgba(232, 168, 76, 0.3); }
+        `),
+        
+        React.createElement('div', { style: { maxWidth: '900px', margin: '0 auto' } },
+          // Header
+          React.createElement('header', { style: { marginBottom: '60px' } },
+            React.createElement('div', {
+              style: {
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.2em',
+                color: 'rgba(232, 168, 76, 0.5)',
+                marginBottom: '12px',
+              }
+            }, 'ATLAS Meridia // Transcript Pipeline v1.0'),
+            React.createElement('h1', {
+              style: {
+                fontFamily: '"Instrument Serif", Georgia, serif',
+                fontSize: '42px',
+                fontWeight: '400',
+                margin: '0 0 8px 0',
+                background: 'linear-gradient(135deg, #E8DCC8 0%, #E8A84C 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+              }
+            }, 'Transcript Pipeline'),
+            React.createElement('p', {
+              style: {
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '13px',
+                color: 'rgba(232, 168, 76, 0.6)',
+                margin: 0,
+              }
+            }, 'Extract transcripts and insights from YouTube videos')
+          ),
+
+          // Config status
+          config && React.createElement('div', {
+            style: {
+              display: 'flex',
+              gap: '16px',
+              marginBottom: '24px',
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: '10px',
+            }
+          },
+            React.createElement('span', { style: { color: 'rgba(232, 168, 76, 0.4)' } },
+              'Model: ', React.createElement('span', { style: { color: '#E8A84C' } }, config.whisper_model)
+            ),
+            React.createElement('span', { style: { color: config.has_anthropic_key ? '#4CE8A8' : '#E84C4C' } },
+              config.has_anthropic_key ? '● API Connected' : '○ API Key Missing'
+            )
+          ),
+
+          // Input
+          React.createElement('div', { style: { display: 'flex', gap: '12px', marginBottom: '40px' } },
+            React.createElement('input', {
+              type: 'text',
+              value: url,
+              onChange: (e) => setUrl(e.target.value),
+              onKeyDown: (e) => e.key === 'Enter' && !isProcessing && processVideo(),
+              placeholder: 'https://youtube.com/watch?v=...',
+              disabled: isProcessing,
+              style: {
+                flex: 1,
+                background: 'rgba(232, 168, 76, 0.03)',
+                border: '1px solid rgba(232, 168, 76, 0.2)',
+                borderRadius: '4px',
+                padding: '16px 20px',
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '14px',
+                color: '#E8DCC8',
+                outline: 'none',
+              }
+            }),
+            React.createElement('button', {
+              onClick: processVideo,
+              disabled: isProcessing || !url.trim(),
+              style: {
+                background: isProcessing || !url.trim() ? 'rgba(232, 168, 76, 0.1)' :
+                           'linear-gradient(135deg, #E8A84C 0%, #D4943C 100%)',
+                border: 'none',
+                borderRadius: '4px',
+                padding: '16px 32px',
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '12px',
+                fontWeight: '600',
+                textTransform: 'uppercase',
+                color: isProcessing || !url.trim() ? 'rgba(232, 168, 76, 0.3)' : '#0A0A08',
+                cursor: isProcessing || !url.trim() ? 'not-allowed' : 'pointer',
+              }
+            }, isProcessing ? 'Processing...' : 'Process')
+          ),
+
+          // Waveform
+          React.createElement('div', { style: { marginBottom: '40px' } },
+            React.createElement('div', {
+              style: {
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '12px',
+              }
+            },
+              React.createElement('span', {
+                style: {
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: '10px',
+                  textTransform: 'uppercase',
+                  color: 'rgba(232, 168, 76, 0.5)',
+                }
+              }, 'Signal Monitor'),
+              currentPhase && React.createElement(PhaseIndicator, { currentPhase, phases })
+            ),
+            React.createElement(Waveform, { isActive: isProcessing, phase: currentPhase })
+          ),
+
+          // Error
+          error && React.createElement('div', {
+            style: {
+              background: 'rgba(232, 76, 76, 0.1)',
+              border: '1px solid rgba(232, 76, 76, 0.3)',
+              borderRadius: '4px',
+              padding: '16px 20px',
+              marginBottom: '40px',
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: '13px',
+              color: '#E84C4C',
+            }
+          }, `Error: ${error}`),
+
+          // Logs
+          logs.length > 0 && React.createElement('div', { style: { marginBottom: '40px' } },
+            React.createElement('div', {
+              style: {
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                color: 'rgba(232, 168, 76, 0.5)',
+                marginBottom: '12px',
+              }
+            }, 'Process Log'),
+            React.createElement('div', {
+              style: {
+                background: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(232, 168, 76, 0.1)',
+                borderRadius: '4px',
+                padding: '16px 20px',
+                maxHeight: '240px',
+                overflowY: 'auto',
+              }
+            }, logs.map((log, i) => React.createElement(LogEntry, { key: i, ...log })))
+          ),
+
+          // Results
+          results && React.createElement('div', {},
+            React.createElement('div', {
+              style: {
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: '10px',
+                textTransform: 'uppercase',
+                color: 'rgba(232, 168, 76, 0.5)',
+                marginBottom: '12px',
+              }
+            }, 'Results'),
+            React.createElement('div', {
+              style: {
+                background: 'rgba(232, 168, 76, 0.03)',
+                border: '1px solid rgba(232, 168, 76, 0.15)',
+                borderRadius: '4px',
+                padding: '20px',
+              }
+            },
+              React.createElement('h3', {
+                style: {
+                  fontFamily: '"Instrument Serif", Georgia, serif',
+                  fontSize: '24px',
+                  color: '#E8DCC8',
+                  marginBottom: '16px',
+                }
+              }, results.title),
+              React.createElement('div', { style: { display: 'flex', gap: '12px' } },
+                React.createElement('a', {
+                  href: api.getDownloadUrl(currentJobId, 'transcript'),
+                  style: {
+                    background: 'rgba(232, 168, 76, 0.1)',
+                    border: '1px solid rgba(232, 168, 76, 0.2)',
+                    borderRadius: '4px',
+                    padding: '12px 20px',
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: '12px',
+                    color: '#E8A84C',
+                    textDecoration: 'none',
+                  }
+                }, '↓ Download Transcript'),
+                results.summary && React.createElement('a', {
+                  href: api.getDownloadUrl(currentJobId, 'summary'),
+                  style: {
+                    background: 'rgba(76, 232, 168, 0.1)',
+                    border: '1px solid rgba(76, 232, 168, 0.2)',
+                    borderRadius: '4px',
+                    padding: '12px 20px',
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: '12px',
+                    color: '#4CE8A8',
+                    textDecoration: 'none',
+                  }
+                }, '↓ Download Summary')
+              )
+            )
+          )
+        )
+      );
+    }
+
+    // Render
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(TranscriptPipeline));
+  </script>
+</body>
+</html>

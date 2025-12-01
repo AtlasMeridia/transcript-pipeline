@@ -27,6 +27,7 @@ services:
       # Output and server settings
       - OUTPUT_DIR=/app/output
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - PORT=8000
     restart: unless-stopped
 
   # CLI Service (use with --profile cli)
@@ -57,6 +58,7 @@ services:
       # Output and server settings
       - OUTPUT_DIR=/app/output
       - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - PORT=8000
     # Use entrypoint for CLI mode
     entrypoint: ["/app/entrypoint.sh"]
     # Prevent container from exiting immediately

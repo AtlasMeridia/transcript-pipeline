@@ -5,8 +5,8 @@ A Dockerized Python tool that transcribes YouTube videos and extracts key inform
 ## Features
 
 - **Dual Interface**: Command-line tool and web-based UI with REST API
-- **Smart Transcription**: Uses [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) by default with automatic Whisper fallback
-- **Chunked Processing**: Handles long videos (>30 min) with intelligent chunking and overlap
+- **Smart Transcription**: Uses [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) for transcription
+- **Chunked Processing**: Handles long videos (>30 min) with intelligent chunking and overlap (handled by ElevenLabs)
 - **AI Extraction**: Extracts key insights using Claude or GPT with hierarchical summarization for long content
 - **Real-time Progress**: Web interface shows live progress via Server-Sent Events
 - **Fully Containerized**: Easy Docker deployment with both CLI and API modes
@@ -73,9 +73,6 @@ ELEVENLABS_API_KEY=your_elevenlabs_key_here
 TRANSCRIPTION_ENGINE=scribe
 SCRIBE_MODEL_ID=scribe_v2
 
-# Whisper fallback model size (tiny, base, small, medium, large)
-WHISPER_MODEL=base
-
 # Use Claude (recommended)
 ANTHROPIC_API_KEY=your_anthropic_key_here
 
@@ -100,7 +97,6 @@ This will:
 - Install all system dependencies (ffmpeg, etc.)
 - Install Python packages
 - Set up the environment
-- The first run will download the Whisper model to the `./models` directory
 
 ## Usage
 
@@ -138,14 +134,11 @@ docker-compose run --rm --profile cli transcript-pipeline https://www.youtube.co
 
 > **Note**: The `--profile cli` flag is required for CLI mode. Without it, docker-compose will try to start the API server.
 
-> The CLI streams audio to ElevenLabs Scribe v2 Realtime when `ELEVENLABS_API_KEY` is configured. Use `--engine whisper` to force the local Whisper fallback.
+> The CLI streams audio to ElevenLabs Scribe v2 Realtime when `ELEVENLABS_API_KEY` is configured.
 
 With custom options:
 
 ```bash
-# Use a different Whisper model
-docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --model small
-
 # Use GPT instead of Claude
 docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --llm gpt
 
@@ -182,10 +175,8 @@ Content-Type: application/json
 
 {
   "url": "https://youtube.com/watch?v=VIDEO_ID",
-  "whisper_model": "base",        # optional
-  "llm_type": "claude",            # optional
-  "transcription_engine": "scribe", # optional
-  "extract": true                  # optional
+  "llm_type": "claude",  # optional
+  "extract": true        # optional
 }
 
 # Returns: {"job_id": "abc123", "status": "pending", ...}
@@ -211,11 +202,11 @@ GET /api/jobs/{job_id}/download/transcript
 GET /api/jobs/{job_id}/download/summary
 ```
 
-**Get Configuration:**
+**Get Configuration (non-sensitive):**
 ```bash
 GET /api/config
 
-# Returns: {"whisper_model": "base", "default_llm": "claude", "has_elevenlabs_key": true, ...}
+# Returns: {"default_llm": "claude", "has_elevenlabs_key": true, ...}
 ```
 
 **Interactive API Documentation:**
@@ -290,9 +281,9 @@ This video provides a comprehensive introduction to machine learning...
 ## CLI Options
 
 ```
-python -m src.main [-h] [--model {tiny,base,small,medium,large}]
+python -m src.main [-h]
                         [--llm {claude,gpt}] [--output-dir OUTPUT_DIR]
-                        [--engine {scribe,whisper}] [--no-extract]
+                        [--no-extract]
                         url
 
 Positional arguments:
@@ -300,24 +291,10 @@ Positional arguments:
 
 Optional arguments:
   -h, --help           Show help message
-  --model MODEL        Whisper model size (default: base)
-  --engine ENGINE      Transcription engine: scribe (default) or whisper
   --llm LLM           LLM for extraction: claude or gpt (default: claude)
   --output-dir DIR     Output directory (default: ./output)
   --no-extract         Skip extraction, only transcribe
 ```
-
-## Whisper Model Sizes
-
-| Model  | Size   | Speed  | Accuracy |
-|--------|--------|--------|----------|
-| tiny   | 39 MB  | Fastest| Lower    |
-| base   | 74 MB  | Fast   | Good     |
-| small  | 244 MB | Medium | Better   |
-| medium | 769 MB | Slow   | High     |
-| large  | 1550 MB| Slowest| Highest  |
-
-**Recommendation**: Start with `base` for a good balance of speed and accuracy.
 
 ## Docker Services
 
@@ -417,7 +394,6 @@ If transcribing large videos:
 If Scribe requests fail or you are offline:
 1. Confirm `ELEVENLABS_API_KEY` is present and valid.
 2. Check your ElevenLabs usage limits.
-3. Rerun with `--engine whisper` to stay fully local.
 
 ### CORS errors in production
 
@@ -469,7 +445,6 @@ from src.main import process_video
 
 result = process_video(
     url="https://youtube.com/watch?v=VIDEO_ID",
-    whisper_model="base",
     llm_type="claude",
     output_dir="./output",
     transcription_engine="scribe",
@@ -528,7 +503,6 @@ Tests cover:
 Built with:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube downloader
 - [ElevenLabs Scribe](https://elevenlabs.io/) - Real-time transcription
-- [OpenAI Whisper](https://github.com/openai/whisper) - Local speech recognition fallback
 - [Anthropic Claude](https://www.anthropic.com/) - AI extraction
 - [OpenAI GPT](https://openai.com/) - AI extraction
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework

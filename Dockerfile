@@ -26,28 +26,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 COPY server.py .
 
-# Create directories for output and models
-RUN mkdir -p /app/output /app/models
+# Create output directory
+RUN mkdir -p /app/output
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
-ENV WHISPER_CACHE_DIR=/app/models
-
-# Create entry point script for CLI mode
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Check if Whisper model cache is empty and download base model\n\
-if [ -z "$(ls -A /app/models)" ]; then\n\
-    echo "Downloading Whisper base model to cache..."\n\
-    python -c "import whisper; whisper.load_model(\"base\", download_root=\"/app/models\")"\n\
-    echo "Model cached successfully"\n\
-fi\n\
-\n\
-# Run the main application\n\
-exec python -m src.main "$@"\n\
-' > /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 EXPOSE 8000
 

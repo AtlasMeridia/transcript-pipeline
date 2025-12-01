@@ -1,4 +1,4 @@
-"""Transcription engine supporting ElevenLabs Scribe with Whisper fallback."""
+"""Transcription engine using ElevenLabs Scribe."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ import os
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
-
-import whisper
 
 from .utils import format_timestamp
 
@@ -34,18 +32,14 @@ class Segment:
 
 
 class Transcriber:
-    """Transcribes audio prioritising ElevenLabs Scribe with Whisper fallback."""
-
-    # Whisper can handle up to ~30 minutes efficiently
-    MAX_CHUNK_DURATION = 30 * 60  # 30 minutes in seconds
-    CHUNK_OVERLAP = 5  # 5 seconds overlap between chunks
+    """Transcribes audio using ElevenLabs Scribe."""
 
     def __init__(
         self,
         model_name: str = "base",
         model_dir: Optional[str] = None,
         engine: str = "scribe",
-        fallback_engine: str = "whisper",
+        fallback_engine: str = "scribe",
         elevenlabs_api_key: Optional[str] = None,
         scribe_model_id: str = "scribe_v2",
         allow_fallback: bool = True,
@@ -54,27 +48,22 @@ class Transcriber:
         Initialize the transcriber.
 
         Args:
-            model_name: Whisper model size (tiny, base, small, medium, large)
-            model_dir: Directory to cache Whisper models
-            engine: Preferred transcription engine ("scribe" or "whisper")
-            fallback_engine: Secondary engine to use when primary fails
-            elevenlabs_api_key: API key for ElevenLabs Scribe
-            scribe_model_id: ElevenLabs Scribe model identifier
-            allow_fallback: Whether to automatically fall back to the secondary engine
+            model_name: Deprecated; kept for backward compatibility.
+            model_dir: Deprecated; no longer used.
+            engine: Preferred transcription engine (only \"scribe\" is supported).
+            fallback_engine: Deprecated; no longer used.
+            elevenlabs_api_key: API key for ElevenLabs Scribe.
+            scribe_model_id: ElevenLabs Scribe model identifier.
+            allow_fallback: Deprecated; no longer used.
         """
         self.model_name = model_name
-        self.model_dir = model_dir or os.path.expanduser("~/.cache/whisper")
-        self.engine = engine
-        self.fallback_engine = fallback_engine
-        self.allow_fallback = allow_fallback
+        self.model_dir = model_dir
+        self.engine = "scribe"
+        self.fallback_engine = None
+        self.allow_fallback = False
         self.elevenlabs_api_key = elevenlabs_api_key
         self.scribe_model_id = scribe_model_id
 
-        # Set environment variable for model cache
-        if model_dir:
-            os.environ["WHISPER_CACHE_DIR"] = model_dir
-
-        self._whisper_model = None
         self._scribe_client: Optional[ElevenLabs] = None
 
     # --------------------------------------------------------------------- Scribe
@@ -254,121 +243,6 @@ class Transcriber:
         logger.info("Scribe transcription complete: %d segments", len(segments))
         return segments
 
-    # ------------------------------------------------------------------- Whisper
-    def _ensure_whisper_model(self) -> None:
-        if self._whisper_model is None:
-            logger.info("Loading Whisper model: %s", self.model_name)
-            self._whisper_model = whisper.load_model(self.model_name, download_root=self.model_dir)
-            logger.info("Whisper model loaded successfully")
-
-    def _load_audio_and_duration(self, audio_path: str) -> tuple[Any, float, int]:
-        """
-        Load audio with Whisper helper and return (audio_array, duration_seconds, sample_rate).
-
-        This keeps duration calculation consistent with Whisper's own preprocessing.
-        """
-        audio = whisper.load_audio(audio_path)
-        # Whisper uses a fixed SAMPLE_RATE internally
-        sample_rate = whisper.audio.SAMPLE_RATE  # type: ignore[attr-defined]
-        total_samples = audio.shape[-1]
-        duration = total_samples / float(sample_rate)
-        return audio, duration, sample_rate
-
-    def _transcribe_with_whisper(
-        self,
-        audio_path: str,
-        language: Optional[str] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Segment]:
-        self._ensure_whisper_model()
-        logger.info("Transcribing with Whisper fallback...")
-
-        options = {"task": "transcribe", "verbose": False}
-        if language:
-            options["language"] = language
-
-        # Load audio and decide whether to chunk based on duration
-        audio, duration, sample_rate = self._load_audio_and_duration(audio_path)
-
-        # For short audio, transcribe in a single pass
-        if duration <= self.MAX_CHUNK_DURATION:
-            result = self._whisper_model.transcribe(audio_path, **options)
-
-            segments: List[Segment] = []
-            for segment in result.get("segments", []):
-                segments.append(
-                    Segment(
-                        start=float(segment["start"]),
-                        end=float(segment["end"]),
-                        text=segment["text"].strip(),
-                    )
-                )
-
-            logger.info("Whisper transcription complete: %d segments", len(segments))
-            return segments
-
-        # For long audio, transcribe in deterministic chunks with overlap
-        logger.info(
-            "Audio duration %.1fs exceeds max chunk duration %ss. Using chunked Whisper transcription...",
-            duration,
-            self.MAX_CHUNK_DURATION,
-        )
-
-        max_chunk_samples = int(self.MAX_CHUNK_DURATION * sample_rate)
-        overlap_samples = int(self.CHUNK_OVERLAP * sample_rate)
-        total_samples = audio.shape[-1]
-
-        segments: List[Segment] = []
-        chunk_start_sample = 0
-        chunk_index = 0
-
-        # Estimate total chunks for progress reporting
-        effective_chunk = max_chunk_samples - overlap_samples if max_chunk_samples > overlap_samples else max_chunk_samples
-        total_chunks = max(1, (total_samples + effective_chunk - 1) // effective_chunk)
-
-        last_text: Optional[str] = None
-
-        while chunk_start_sample < total_samples:
-            chunk_end_sample = min(chunk_start_sample + max_chunk_samples, total_samples)
-            chunk_audio = audio[chunk_start_sample:chunk_end_sample]
-            base_offset = chunk_start_sample / float(sample_rate)
-
-            if progress_callback:
-                progress_callback(chunk_index + 1, total_chunks)
-
-            chunk_result = self._whisper_model.transcribe(chunk_audio, **options)
-
-            for segment in chunk_result.get("segments", []):
-                text = segment.get("text", "").strip()
-                if not text:
-                    continue
-
-                # Adjust timestamps by chunk offset
-                start = base_offset + float(segment["start"])
-                end = base_offset + float(segment["end"])
-
-                # Simple deduplication across overlaps: skip if text
-                # repeats exactly from the previous segment
-                if last_text is not None and text == last_text:
-                    continue
-
-                segments.append(Segment(start=start, end=end, text=text))
-                last_text = text
-
-            if chunk_end_sample == total_samples:
-                break
-
-            # Move start forward, keeping an overlap
-            chunk_start_sample = chunk_end_sample - overlap_samples
-            chunk_index += 1
-
-        logger.info(
-            "Whisper chunked transcription complete: %d segments across %d chunks",
-            len(segments),
-            chunk_index + 1,
-        )
-        return segments
-
     # -------------------------------------------------------------------- Public
     def transcribe(
         self,
@@ -390,20 +264,13 @@ class Transcriber:
         Raises:
             Exception: If transcription fails
         """
-        engines_to_try: List[str] = []
-        if self.engine:
-            engines_to_try.append(self.engine)
-        if self.allow_fallback and self.fallback_engine and self.fallback_engine not in engines_to_try:
-            engines_to_try.append(self.fallback_engine)
-
+        engines_to_try: List[str] = ["scribe"]
         last_error: Optional[Exception] = None
 
         for idx, engine in enumerate(engines_to_try):
             try:
                 if engine == "scribe":
                     segments = self._transcribe_with_scribe(audio_path, language, progress_callback)
-                elif engine == "whisper":
-                    segments = self._transcribe_with_whisper(audio_path, language, progress_callback)
                 else:
                     raise ValueError(f"Unknown transcription engine: {engine}")
 

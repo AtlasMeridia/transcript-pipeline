@@ -66,9 +66,7 @@ jobs: dict = {}
 
 class ProcessRequest(BaseModel):
     url: str
-    whisper_model: Optional[str] = None
     llm_type: Optional[str] = None
-    transcription_engine: Optional[str] = None
     extract: bool = True
 
 
@@ -124,7 +122,7 @@ def create_summary_markdown(metadata: dict, summary: str) -> str:
 """
 
 
-async def process_video_async(job_id: str, url: str, whisper_model: str, llm_type: str, transcription_engine: str, extract: bool):
+async def process_video_async(job_id: str, url: str, llm_type: str, extract: bool):
     """
     Process a video asynchronously, updating job status as we go.
     """
@@ -132,7 +130,7 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
     config = load_config()
     output_dir = config.get('output_dir', './output')
     
-    # Get transcription configuration
+    # Get transcription configuration (ElevenLabs only)
     elevenlabs_api_key = config.get('elevenlabs_api_key')
     scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
     
@@ -171,10 +169,6 @@ async def process_video_async(job_id: str, url: str, whisper_model: str, llm_typ
         job['message'] = 'Initializing transcription...'
         
         transcriber = Transcriber(
-            model_name=whisper_model,
-            model_dir="./models",
-            engine=transcription_engine,
-            fallback_engine="whisper",
             elevenlabs_api_key=elevenlabs_api_key,
             scribe_model_id=scribe_model_id,
         )
@@ -278,9 +272,7 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
     
     # Create job
     job_id = str(uuid.uuid4())[:8]
-    whisper_model = request.whisper_model or config.get('whisper_model', 'base')
     llm_type = request.llm_type or config.get('default_llm', 'claude')
-    transcription_engine = request.transcription_engine or config.get('transcription_engine', 'scribe')
     
     jobs[job_id] = {
         'job_id': job_id,
@@ -303,9 +295,7 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
         process_video_async,
         job_id,
         request.url,
-        whisper_model,
         llm_type,
-        transcription_engine,
         request.extract
     )
     
@@ -423,7 +413,6 @@ async def get_config():
     """Get current pipeline configuration (without sensitive data)."""
     config = load_config()
     return {
-        "whisper_model": config.get('whisper_model', 'base'),
         "default_llm": config.get('default_llm', 'claude'),
         "output_dir": config.get('output_dir', './output'),
         "has_anthropic_key": bool(config.get('anthropic_api_key')),

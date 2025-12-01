@@ -75,10 +75,8 @@ def create_summary_markdown(metadata: dict, summary: str, output_path: Path) -> 
 
 def process_video(
     url: str,
-    whisper_model: str,
     llm_type: str,
     output_dir: str,
-    transcription_engine: str,
     elevenlabs_api_key: Optional[str],
     scribe_model_id: str,
     no_extract: bool = False,
@@ -89,10 +87,8 @@ def process_video(
 
     Args:
         url: YouTube video URL
-        whisper_model: Whisper model size
         llm_type: LLM type for extraction
         output_dir: Output directory for markdown files
-        transcription_engine: Preferred transcription engine ("scribe" or "whisper")
         elevenlabs_api_key: API key for ElevenLabs (required for Scribe)
         scribe_model_id: ElevenLabs Scribe model identifier
         no_extract: Skip extraction step
@@ -124,10 +120,6 @@ def process_video(
         logger.info("STEP 2: Transcribing Audio")
         logger.info("=" * 60)
         transcriber = Transcriber(
-            model_name=whisper_model,
-            model_dir="./models",
-            engine=transcription_engine,
-            fallback_engine="whisper",
             elevenlabs_api_key=elevenlabs_api_key,
             scribe_model_id=scribe_model_id,
         )
@@ -233,13 +225,6 @@ Examples:
     )
 
     parser.add_argument(
-        '--model',
-        default=None,
-        choices=['tiny', 'base', 'small', 'medium', 'large'],
-        help='Whisper model size (default: from .env or "base")'
-    )
-
-    parser.add_argument(
         '--llm',
         default=None,
         choices=['claude', 'gpt'],
@@ -253,13 +238,6 @@ Examples:
     )
 
     parser.add_argument(
-        '--engine',
-        default=None,
-        choices=['scribe', 'whisper'],
-        help='Transcription engine (default: from .env or "scribe")'
-    )
-
-    parser.add_argument(
         '--no-extract',
         action='store_true',
         help='Skip extraction, only transcribe'
@@ -269,23 +247,16 @@ Examples:
 
     # Load config and apply defaults
     config = load_config()
-    whisper_model = args.model or config.get('whisper_model', 'base')
     llm_type = args.llm or config.get('default_llm', 'claude')
     output_dir = args.output_dir or config.get('output_dir', './output')
-    transcription_engine = args.engine or config.get('transcription_engine', 'scribe')
     elevenlabs_api_key = config.get('elevenlabs_api_key')
     scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
     llm_model_id = config.get('claude_model_id') if llm_type == 'claude' else config.get('openai_model_id')
 
-    if transcription_engine == 'scribe' and not elevenlabs_api_key:
-        logger.warning("ELEVENLABS_API_KEY not found. Falling back to Whisper.")
-        transcription_engine = 'whisper'
-
     logger.info("Transcript Pipeline")
     logger.info("=" * 60)
     logger.info(f"URL: {args.url}")
-    logger.info(f"Whisper Model: {whisper_model}")
-    logger.info(f"Transcription Engine: {transcription_engine}")
+    logger.info("Transcription Engine: scribe (ElevenLabs)")
     logger.info(f"LLM: {llm_type}")
     logger.info(f"LLM Model: {llm_model_id or '(default)'}")
     logger.info(f"Output Directory: {output_dir}")
@@ -294,10 +265,8 @@ Examples:
 
     process_video(
         url=args.url,
-        whisper_model=whisper_model,
         llm_type=llm_type,
         output_dir=output_dir,
-        transcription_engine=transcription_engine,
         elevenlabs_api_key=elevenlabs_api_key,
         scribe_model_id=scribe_model_id,
         no_extract=args.no_extract

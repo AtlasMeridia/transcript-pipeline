@@ -32,7 +32,6 @@ docker-compose run --rm transcript-pipeline <YOUTUBE_URL>
 **Common Options:**
 *   `--model [tiny|base|small|medium|large]`: Select Whisper model size.
 *   `--llm [claude|gpt]`: Select LLM for extraction.
-*   `--engine [scribe|whisper]`: Force specific transcription engine.
 *   `--no-extract`: Skip the summarization step.
 
 ### Local Development

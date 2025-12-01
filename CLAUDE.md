@@ -10,7 +10,7 @@ A Dockerized CLI tool that downloads YouTube videos, transcribes them using Elev
 
 ## Development Commands
 
-**Python Version Requirement**: Use Python 3.11 - 3.13. Python 3.14+ is not supported due to `openai-whisper` dependency constraints. A `.python-version` file is included to specify the recommended version.
+**Python Version Requirement**: Use Python 3.11 - 3.13. A `.python-version` file is included to specify the recommended version.
 
 ### Docker (Recommended)
 ```bash
@@ -57,8 +57,6 @@ The Transcriber implements a **primary + fallback** pattern:
 - **Fallback engine**: Whisper (local ML model)
 - **Automatic fallback**: If Scribe fails or API key is missing, falls back to Whisper
 
-**Important**: For long videos (>30 min), Whisper uses **chunked transcription** with 5-second overlaps to handle memory constraints. The `_transcribe_with_whisper()` method splits audio into 30-minute chunks with deduplication logic to prevent repeated text across chunk boundaries.
-
 **Scribe parsing**: The `_parse_scribe_response()` method handles multiple possible response formats from the ElevenLabs API (segments, words, or raw text) using a flexible parsing strategy.
 
 ### AI Extraction Strategy (src/extractor.py)
@@ -80,7 +78,6 @@ This prevents context window overflow and maintains quality for long videos.
 Environment variables are loaded from `.env` (use `.env.example` as template):
 - `ELEVENLABS_API_KEY` - Required for Scribe transcription
 - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - Required for extraction
-- `TRANSCRIPTION_ENGINE` - Set to `scribe` (default) or `whisper`
 - `DEFAULT_LLM` - Set to `claude` (default) or `gpt`
 - `WHISPER_MODEL` - Model size: tiny, base (default), small, medium, large
 - `OUTPUT_DIR` - Base directory for all outputs (default: `./output`)

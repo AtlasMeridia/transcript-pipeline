@@ -48,7 +48,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             url,
-            whisper_model: options.whisperModel,
             llm_type: options.llmType,
             extract: options.extract !== false,
           }),
@@ -450,9 +449,6 @@
               fontSize: '10px',
             }
           },
-            React.createElement('span', { style: { color: 'rgba(232, 168, 76, 0.4)' } },
-              'Model: ', React.createElement('span', { style: { color: '#E8A84C' } }, config.whisper_model)
-            ),
             React.createElement('span', { style: { color: config.has_anthropic_key ? '#4CE8A8' : '#E84C4C' } },
               config.has_anthropic_key ? '● API Connected' : '○ API Key Missing'
             )

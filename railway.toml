@@ -1,0 +1,13 @@
+[build]
+# Use Dockerfile instead of Nixpacks
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+# Health check endpoint
+healthcheckPath = "/"
+healthcheckTimeout = 300
+# Increase start timeout for whisper model loading
+startCommand = "python -m uvicorn server:app --host 0.0.0.0 --port $PORT"
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3

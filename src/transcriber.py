@@ -1,10 +1,11 @@
-"""Transcription engine using ElevenLabs Scribe."""
+"""Transcription engine abstraction supporting multiple backends."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
@@ -13,11 +14,21 @@ from .utils import format_timestamp
 
 logger = logging.getLogger(__name__)
 
+# Optional imports for backends
 try:
     from elevenlabs.client import ElevenLabs
-except ImportError:  # pragma: no cover - handled at runtime when dependency missing
+except ImportError:
     ElevenLabs = None
 
+try:
+    import whisper
+except ImportError:
+    whisper = None
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
 
 @dataclass
 class Segment:
@@ -31,59 +42,208 @@ class Segment:
         return {"start": float(self.start), "end": float(self.end), "text": self.text.strip()}
 
 
-class Transcriber:
-    """Transcribes audio using ElevenLabs Scribe."""
+# =============================================================================
+# Base Transcriber Interface
+# =============================================================================
+
+class BaseTranscriber(ABC):
+    """Abstract base class for transcription engines."""
+
+    @property
+    @abstractmethod
+    def engine_name(self) -> str:
+        """Return the name of this transcription engine."""
+        pass
+
+    @abstractmethod
+    def transcribe(
+        self,
+        audio_path: str,
+        language: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Dict]:
+        """
+        Transcribe audio file with timestamps.
+
+        Args:
+            audio_path: Path to audio file
+            language: Optional language code (e.g., 'en', 'es')
+            progress_callback: Optional callback(current_chunk, total_chunks)
+
+        Returns:
+            List of segment dictionaries with 'start', 'end', and 'text' keys
+
+        Raises:
+            Exception: If transcription fails
+        """
+        pass
+
+    def format_transcript(self, segments: List[Dict], include_timestamps: bool = True) -> str:
+        """
+        Format transcript segments into readable text.
+
+        Args:
+            segments: List of segment dictionaries
+            include_timestamps: Whether to include timestamps
+
+        Returns:
+            Formatted transcript string
+        """
+        lines = []
+
+        for segment in segments:
+            if include_timestamps:
+                timestamp = format_timestamp(segment["start"])
+                lines.append(f"{timestamp} {segment['text']}")
+            else:
+                lines.append(segment["text"])
+
+        return "\n".join(lines)
+
+    def get_full_text(self, segments: List[Dict]) -> str:
+        """
+        Get plain text transcript without timestamps.
+
+        Args:
+            segments: List of segment dictionaries
+
+        Returns:
+            Plain text transcript
+        """
+        return " ".join(segment["text"] for segment in segments)
+
+
+# =============================================================================
+# Whisper Transcriber (Local)
+# =============================================================================
+
+class WhisperTranscriber(BaseTranscriber):
+    """Transcribes audio using OpenAI Whisper locally."""
 
     def __init__(
         self,
-        model_name: str = "base",
+        model_name: str = "large-v3",
         model_dir: Optional[str] = None,
-        engine: str = "scribe",
-        fallback_engine: str = "scribe",
-        elevenlabs_api_key: Optional[str] = None,
-        scribe_model_id: str = "scribe_v2",
-        allow_fallback: bool = True,
     ):
         """
-        Initialize the transcriber.
+        Initialize the Whisper transcriber.
 
         Args:
-            model_name: Deprecated; kept for backward compatibility.
-            model_dir: Deprecated; no longer used.
-            engine: Preferred transcription engine (only \"scribe\" is supported).
-            fallback_engine: Deprecated; no longer used.
-            elevenlabs_api_key: API key for ElevenLabs Scribe.
-            scribe_model_id: ElevenLabs Scribe model identifier.
-            allow_fallback: Deprecated; no longer used.
+            model_name: Whisper model to use (tiny, base, small, medium, large, large-v2, large-v3)
+            model_dir: Directory to store model files (persistent cache)
         """
+        if whisper is None:
+            raise RuntimeError(
+                "The 'openai-whisper' package is not installed. "
+                "Install it with: pip install openai-whisper"
+            )
+
         self.model_name = model_name
-        self.model_dir = model_dir
-        self.engine = "scribe"
-        self.fallback_engine = None
-        self.allow_fallback = False
-        self.elevenlabs_api_key = elevenlabs_api_key
-        self.scribe_model_id = scribe_model_id
+        self.model_dir = model_dir or os.getenv("WHISPER_MODEL_DIR", os.path.expanduser("~/.cache/whisper"))
+        self._model = None
 
-        self._scribe_client: Optional[ElevenLabs] = None
+    @property
+    def engine_name(self) -> str:
+        return "whisper"
 
-    # --------------------------------------------------------------------- Scribe
-    def _ensure_scribe_client(self) -> ElevenLabs:
+    def _ensure_model(self):
+        """Load the Whisper model, downloading if necessary."""
+        if self._model is None:
+            logger.info(f"Loading Whisper model '{self.model_name}' from {self.model_dir}...")
+            # Set download root for model persistence
+            self._model = whisper.load_model(self.model_name, download_root=self.model_dir)
+            logger.info(f"Whisper model '{self.model_name}' loaded successfully")
+        return self._model
+
+    def transcribe(
+        self,
+        audio_path: str,
+        language: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Dict]:
+        """Transcribe audio using Whisper."""
+        model = self._ensure_model()
+        logger.info(f"Transcribing with Whisper ({self.model_name})...")
+
+        # Whisper transcription options
+        options = {
+            "verbose": False,
+            "word_timestamps": False,
+        }
+        if language:
+            options["language"] = language
+
+        result = model.transcribe(audio_path, **options)
+
+        # Convert Whisper segments to our format
+        segments = []
+        for seg in result.get("segments", []):
+            segments.append(Segment(
+                start=seg["start"],
+                end=seg["end"],
+                text=seg["text"].strip()
+            ))
+
+        if not segments:
+            # Fall back to full text if no segments
+            text = result.get("text", "").strip()
+            if text:
+                segments.append(Segment(start=0.0, end=len(text.split()) * 0.3, text=text))
+
+        logger.info(f"Whisper transcription complete: {len(segments)} segments")
+        return [seg.as_dict() for seg in segments]
+
+
+# =============================================================================
+# ElevenLabs Transcriber (Cloud)
+# =============================================================================
+
+class ElevenLabsTranscriber(BaseTranscriber):
+    """Transcribes audio using ElevenLabs Scribe API."""
+
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        scribe_model_id: str = "scribe_v2",
+    ):
+        """
+        Initialize the ElevenLabs transcriber.
+
+        Args:
+            api_key: ElevenLabs API key (defaults to ELEVENLABS_API_KEY env var)
+            scribe_model_id: ElevenLabs Scribe model identifier
+        """
         if ElevenLabs is None:
-            raise RuntimeError("The 'elevenlabs' package is not installed. Please install it to use Scribe.")
-        if not self.elevenlabs_api_key:
+            raise RuntimeError(
+                "The 'elevenlabs' package is not installed. "
+                "Install it with: pip install elevenlabs"
+            )
+
+        self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
+        self.scribe_model_id = scribe_model_id
+        self._client: Optional[ElevenLabs] = None
+
+    @property
+    def engine_name(self) -> str:
+        return "elevenlabs"
+
+    def _ensure_client(self) -> ElevenLabs:
+        """Initialize the ElevenLabs client."""
+        if not self.api_key:
             raise RuntimeError("ELEVENLABS_API_KEY is not configured.")
-        if self._scribe_client is None:
+        if self._client is None:
             logger.info("Initializing ElevenLabs Scribe client...")
-            self._scribe_client = ElevenLabs(api_key=self.elevenlabs_api_key)
-        return self._scribe_client
+            self._client = ElevenLabs(api_key=self.api_key)
+        return self._client
 
     def _coerce_response_to_dict(self, response: Any) -> Dict[str, Any]:
+        """Convert various response types to dictionary."""
         if response is None:
             return {}
         if isinstance(response, dict):
             return response
         if hasattr(response, "model_dump"):
-            try:  # pydantic style
+            try:
                 return response.model_dump()
             except Exception:
                 pass
@@ -100,6 +260,7 @@ class Transcriber:
         return {"raw": response}
 
     def _build_segments_from_words(self, words: List[Dict[str, Any]]) -> List[Segment]:
+        """Build segments from word-level timestamps."""
         segments: List[Segment] = []
         if not words:
             return segments
@@ -159,6 +320,7 @@ class Transcriber:
         return segments
 
     def _extract_segments_from_container(self, container: Dict[str, Any]) -> List[Segment]:
+        """Extract segments from API response container."""
         if not container:
             return []
 
@@ -185,6 +347,7 @@ class Transcriber:
                     segments.append(Segment(start=start, end=end, text=text))
                 if segments:
                     return segments
+
         # Fall back to words
         words = container.get("words") or container.get("word_timestamps")
         if isinstance(words, list):
@@ -198,6 +361,7 @@ class Transcriber:
         return []
 
     def _parse_scribe_response(self, response: Any) -> List[Segment]:
+        """Parse the Scribe API response into segments."""
         data = self._coerce_response_to_dict(response)
         if not data:
             return []
@@ -215,14 +379,15 @@ class Transcriber:
 
         return []
 
-    def _transcribe_with_scribe(
+    def transcribe(
         self,
         audio_path: str,
         language: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Segment]:
-        client = self._ensure_scribe_client()
-        logger.info("Transcribing with ElevenLabs Scribe (%s)...", self.scribe_model_id)
+    ) -> List[Dict]:
+        """Transcribe audio using ElevenLabs Scribe."""
+        client = self._ensure_client()
+        logger.info(f"Transcribing with ElevenLabs Scribe ({self.scribe_model_id})...")
 
         with open(audio_path, "rb") as audio_file:
             audio_bytes = audio_file.read()
@@ -240,82 +405,59 @@ class Transcriber:
         if not segments:
             raise RuntimeError("ElevenLabs Scribe returned no transcript segments.")
 
-        logger.info("Scribe transcription complete: %d segments", len(segments))
-        return segments
+        logger.info(f"Scribe transcription complete: {len(segments)} segments")
+        return [seg.as_dict() for seg in segments]
 
-    # -------------------------------------------------------------------- Public
-    def transcribe(
-        self,
-        audio_path: str,
-        language: Optional[str] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Dict]:
-        """
-        Transcribe audio file with timestamps.
 
-        Args:
-            audio_path: Path to audio file
-            language: Optional language code (e.g., 'en', 'es')
-            progress_callback: Optional callback(current_chunk, total_chunks)
+# =============================================================================
+# Factory Function
+# =============================================================================
 
-        Returns:
-            List of segment dictionaries with 'start', 'end', and 'text' keys
+def get_transcriber(
+    engine: Optional[str] = None,
+    **kwargs,
+) -> BaseTranscriber:
+    """
+    Factory function to get the appropriate transcriber based on configuration.
 
-        Raises:
-            Exception: If transcription fails
-        """
-        engines_to_try: List[str] = ["scribe"]
-        last_error: Optional[Exception] = None
+    Args:
+        engine: Override engine selection ('whisper' or 'elevenlabs')
+        **kwargs: Additional arguments passed to the transcriber constructor
 
-        for idx, engine in enumerate(engines_to_try):
-            try:
-                if engine == "scribe":
-                    segments = self._transcribe_with_scribe(audio_path, language, progress_callback)
-                else:
-                    raise ValueError(f"Unknown transcription engine: {engine}")
+    Returns:
+        Configured transcriber instance
 
-                return [segment.as_dict() for segment in segments]
+    Environment Variables:
+        TRANSCRIPTION_ENGINE: 'whisper' or 'elevenlabs' (default: 'whisper')
+        WHISPER_MODEL: Model name for Whisper (default: 'large-v3')
+        WHISPER_MODEL_DIR: Directory for model cache
+        ELEVENLABS_API_KEY: API key for ElevenLabs
+        SCRIBE_MODEL_ID: Model ID for ElevenLabs Scribe
+    """
+    if engine is None:
+        engine = os.getenv("TRANSCRIPTION_ENGINE", "whisper").lower()
 
-            except Exception as exc:
-                last_error = exc
-                engine_name = engine.capitalize()
-                if idx < len(engines_to_try) - 1:
-                    logger.warning(f"{engine_name} transcription failed ({exc}). Trying fallback engine...")
-                else:
-                    logger.error(f"{engine_name} transcription failed ({exc}). No further fallbacks configured.")
+    logger.info(f"Initializing transcription engine: {engine}")
 
-        raise Exception(f"Transcription failed: {last_error}") from last_error
+    if engine == "elevenlabs":
+        api_key = kwargs.pop("api_key", None) or kwargs.pop("elevenlabs_api_key", None)
+        scribe_model_id = kwargs.pop("scribe_model_id", None) or os.getenv("SCRIBE_MODEL_ID", "scribe_v2")
+        return ElevenLabsTranscriber(
+            api_key=api_key,
+            scribe_model_id=scribe_model_id,
+        )
+    else:  # Default to whisper
+        model_name = kwargs.pop("model_name", None) or os.getenv("WHISPER_MODEL", "large-v3")
+        model_dir = kwargs.pop("model_dir", None) or os.getenv("WHISPER_MODEL_DIR")
+        return WhisperTranscriber(
+            model_name=model_name,
+            model_dir=model_dir,
+        )
 
-    def format_transcript(self, segments: List[Dict], include_timestamps: bool = True) -> str:
-        """
-        Format transcript segments into readable text.
 
-        Args:
-            segments: List of segment dictionaries
-            include_timestamps: Whether to include timestamps
+# =============================================================================
+# Legacy Compatibility
+# =============================================================================
 
-        Returns:
-            Formatted transcript string
-        """
-        lines = []
-
-        for segment in segments:
-            if include_timestamps:
-                timestamp = format_timestamp(segment["start"])
-                lines.append(f"{timestamp} {segment['text']}")
-            else:
-                lines.append(segment["text"])
-
-        return "\n".join(lines)
-
-    def get_full_text(self, segments: List[Dict]) -> str:
-        """
-        Get plain text transcript without timestamps.
-
-        Args:
-            segments: List of segment dictionaries
-
-        Returns:
-            Plain text transcript
-        """
-        return " ".join(segment["text"] for segment in segments)
+# Alias for backward compatibility
+Transcriber = ElevenLabsTranscriber

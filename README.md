@@ -5,8 +5,8 @@ A Dockerized Python tool that transcribes YouTube videos and extracts key inform
 ## Features
 
 - **Dual Interface**: Command-line tool and web-based UI with REST API
-- **Smart Transcription**: Uses [ElevenLabs Scribe v2 Realtime](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) for transcription
-- **Chunked Processing**: Handles long videos (>30 min) with intelligent chunking and overlap (handled by ElevenLabs)
+- **Flexible Transcription**: Choose between [OpenAI Whisper](https://github.com/openai/whisper) (local) or [ElevenLabs Scribe v2](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) (cloud)
+- **Chunked Processing**: Handles long videos with intelligent chunking and overlap
 - **AI Extraction**: Extracts key insights using Claude or GPT with hierarchical summarization for long content
 - **Real-time Progress**: Web interface shows live progress via Server-Sent Events
 - **Fully Containerized**: Easy Docker deployment with both CLI and API modes
@@ -47,7 +47,8 @@ transcript-pipeline/
 - Docker and Docker Compose
 - (Optional for local run) Python 3.11 - 3.13 (Python 3.14+ not supported)
 - API key for Claude (Anthropic) or GPT (OpenAI)
-- ElevenLabs API key for Scribe v2 Realtime transcription (default engine)
+- **For local transcription**: No additional API keys needed (uses Whisper)
+- **For cloud transcription**: ElevenLabs API key for Scribe v2
 
 ## Setup
 
@@ -68,34 +69,48 @@ cp .env.example .env
 Edit `.env` and add your API keys (see `.env.example` for all available options):
 
 ```bash
-# ElevenLabs Scribe (default transcription engine)
-ELEVENLABS_API_KEY=your_elevenlabs_key_here
-TRANSCRIPTION_ENGINE=scribe
-SCRIBE_MODEL_ID=scribe_v2
+# Transcription Engine: 'whisper' (local) or 'elevenlabs' (cloud)
+# Default: whisper
+TRANSCRIPTION_ENGINE=whisper
 
+# Whisper Configuration (for local transcription)
+WHISPER_MODEL=large-v3  # Options: tiny, base, small, medium, large, large-v2, large-v3
+# WHISPER_MODEL_DIR=/path/to/models  # Optional: custom model cache directory
+
+# ElevenLabs Configuration (for cloud transcription)
+# Required only if TRANSCRIPTION_ENGINE=elevenlabs
+ELEVENLABS_API_KEY=your_elevenlabs_key_here
+# SCRIBE_MODEL_ID=scribe_v2
+
+# LLM for AI extraction
 # Use Claude (recommended)
 ANTHROPIC_API_KEY=your_anthropic_key_here
 
 # OR use GPT
-OPENAI_API_KEY=your_openai_key_here
+# OPENAI_API_KEY=your_openai_key_here
 
 # Default LLM for extraction (claude or gpt)
 DEFAULT_LLM=claude
 
 # Optional overrides for specific model versions
-CLAUDE_MODEL_ID=claude-sonnet-4-5
-OPENAI_MODEL_ID=gpt-4o-mini
+# CLAUDE_MODEL_ID=claude-sonnet-4-5
+# OPENAI_MODEL_ID=gpt-4o-mini
 ```
 
 ### 3. Build the Docker Image
 
 ```bash
+# Standard build (ElevenLabs cloud transcription - lean image for Railway)
 docker-compose build
+
+# With Whisper support (local transcription - larger image)
+docker-compose build --build-arg INSTALL_WHISPER=true
 ```
 
 This will:
 - Install all system dependencies (ffmpeg, etc.)
 - Install Python packages
+- Optionally install Whisper dependencies (~2GB additional)
 - Set up the environment
 
 ## Usage
@@ -154,8 +169,11 @@ docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO
 If you prefer to run without Docker:
 
 ```bash
-# Install dependencies
+# Install dependencies (ElevenLabs cloud transcription only)
 pip install -r requirements.txt
+
+# OR install with Whisper support (local transcription)
+pip install -r requirements-local.txt
 
 # Run CLI
 python -m src.main https://www.youtube.com/watch?v=VIDEO_ID
@@ -206,7 +224,13 @@ GET /api/jobs/{job_id}/download/summary
 ```bash
 GET /api/config
 
-# Returns: {"default_llm": "claude", "has_elevenlabs_key": true, ...}
+# Returns: {
+#   "default_llm": "claude",
+#   "transcription_engine": "whisper",  # or "elevenlabs"
+#   "whisper_model": "large-v3",         # if using whisper
+#   "has_elevenlabs_key": true,
+#   ...
+# }
 ```
 
 **Interactive API Documentation:**
@@ -394,6 +418,7 @@ If transcribing large videos:
 If Scribe requests fail or you are offline:
 1. Confirm `ELEVENLABS_API_KEY` is present and valid.
 2. Check your ElevenLabs usage limits.
+3. Alternatively, switch to local Whisper transcription: `TRANSCRIPTION_ENGINE=whisper`
 
 ### CORS errors in production
 
@@ -502,7 +527,8 @@ Tests cover:
 
 Built with:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube downloader
-- [ElevenLabs Scribe](https://elevenlabs.io/) - Real-time transcription
+- [OpenAI Whisper](https://github.com/openai/whisper) - Local transcription
+- [ElevenLabs Scribe](https://elevenlabs.io/) - Cloud transcription
 - [Anthropic Claude](https://www.anthropic.com/) - AI extraction
 - [OpenAI GPT](https://openai.com/) - AI extraction
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework

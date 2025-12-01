@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.utils import load_config, sanitize_filename, ensure_output_path, format_duration
 from src.downloader import VideoDownloader
-from src.transcriber import Transcriber
+from src.transcriber import get_transcriber, BaseTranscriber
 from src.extractor import TranscriptExtractor
 
 
@@ -169,12 +169,17 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
         job['phase'] = 'transcribing'
         job['message'] = 'Initializing transcription...'
         
-        transcriber = Transcriber(
-            elevenlabs_api_key=elevenlabs_api_key,
+        # Get configured transcription engine
+        transcription_engine = config.get('transcription_engine', 'whisper')
+        transcriber = get_transcriber(
+            engine=transcription_engine,
+            api_key=elevenlabs_api_key,
             scribe_model_id=scribe_model_id,
+            model_name=config.get('whisper_model'),
+            model_dir=config.get('whisper_model_dir'),
         )
         
-        job['message'] = 'Transcribing audio...'
+        job['message'] = f'Transcribing audio with {transcriber.engine_name}...'
         segments = await loop.run_in_executor(
             None, transcriber.transcribe, audio_path
         )
@@ -422,13 +427,18 @@ async def download_file(job_id: str, file_type: str):
 async def get_config():
     """Get current pipeline configuration (without sensitive data)."""
     config = load_config()
+    transcription_engine = config.get('transcription_engine', 'whisper')
+    
     return {
         "default_llm": config.get('default_llm', 'claude'),
         "output_dir": config.get('output_dir', './output'),
         "has_anthropic_key": bool(config.get('anthropic_api_key')),
         "has_openai_key": bool(config.get('openai_api_key')),
-        "transcription_engine": config.get('transcription_engine', 'scribe'),
+        # Transcription configuration
+        "transcription_engine": transcription_engine,
+        "whisper_model": config.get('whisper_model', 'large-v3') if transcription_engine == 'whisper' else None,
         "has_elevenlabs_key": bool(config.get('elevenlabs_api_key')),
+        "scribe_model_id": config.get('scribe_model_id', 'scribe_v2') if transcription_engine == 'elevenlabs' else None,
     }
 
 

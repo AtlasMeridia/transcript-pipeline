@@ -92,14 +92,26 @@ def load_config() -> dict:
     load_dotenv()
 
     config = {
+        # LLM Configuration
         'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY'),
         'openai_api_key': os.getenv('OPENAI_API_KEY'),
         'default_llm': os.getenv('DEFAULT_LLM', 'claude'),
-        'output_dir': os.getenv('OUTPUT_DIR', './output'),
-        'elevenlabs_api_key': os.getenv('ELEVENLABS_API_KEY'),
-        'scribe_model_id': os.getenv('SCRIBE_MODEL_ID', 'scribe_v2'),
         'claude_model_id': os.getenv('CLAUDE_MODEL_ID', 'claude-sonnet-4-5'),
         'openai_model_id': os.getenv('OPENAI_MODEL_ID', 'gpt-4o-mini'),
+        
+        # Output Configuration
+        'output_dir': os.getenv('OUTPUT_DIR', './output'),
+        
+        # Transcription Configuration
+        'transcription_engine': os.getenv('TRANSCRIPTION_ENGINE', 'whisper').lower(),
+        
+        # Whisper Configuration (local)
+        'whisper_model': os.getenv('WHISPER_MODEL', 'large-v3'),
+        'whisper_model_dir': os.getenv('WHISPER_MODEL_DIR'),
+        
+        # ElevenLabs Configuration (cloud)
+        'elevenlabs_api_key': os.getenv('ELEVENLABS_API_KEY'),
+        'scribe_model_id': os.getenv('SCRIBE_MODEL_ID', 'scribe_v2'),
     }
 
     return config

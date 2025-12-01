@@ -1,8 +1,11 @@
-from src.transcriber import Transcriber
+"""Tests for ElevenLabs Scribe response parsing."""
+
+from src.transcriber import ElevenLabsTranscriber
 
 
 def test_parse_scribe_response_segments():
-    t = Transcriber(engine="scribe", allow_fallback=False)
+    """Test parsing response with segments."""
+    t = ElevenLabsTranscriber(api_key="test-key")
     response = {
         "output": {
             "segments": [
@@ -19,7 +22,8 @@ def test_parse_scribe_response_segments():
 
 
 def test_parse_scribe_response_words_fallback():
-    t = Transcriber(engine="scribe", allow_fallback=False)
+    """Test parsing response with word-level timestamps."""
+    t = ElevenLabsTranscriber(api_key="test-key")
     response = {
         "output": {
             "words": [
@@ -37,7 +41,8 @@ def test_parse_scribe_response_words_fallback():
 
 
 def test_parse_scribe_response_text_fallback():
-    t = Transcriber(engine="scribe", allow_fallback=False)
+    """Test parsing response with single text blob."""
+    t = ElevenLabsTranscriber(api_key="test-key")
     response = {
         "output": {
             "text": "Single blob transcript text.",
@@ -49,3 +54,9 @@ def test_parse_scribe_response_text_fallback():
     assert segments[0].text.startswith("Single blob transcript")
 
 
+def test_legacy_transcriber_alias():
+    """Test that the Transcriber alias still works for backward compatibility."""
+    from src.transcriber import Transcriber
+    
+    # Should be an alias to ElevenLabsTranscriber
+    assert Transcriber is ElevenLabsTranscriber

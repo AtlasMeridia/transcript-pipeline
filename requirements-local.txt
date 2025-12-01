@@ -1,0 +1,13 @@
+# Local development requirements
+# Includes all base dependencies plus Whisper for local transcription
+
+# Include base requirements
+-r requirements.txt
+
+# Whisper transcription (local)
+# Requires ffmpeg to be installed on your system
+openai-whisper>=20231117
+
+# Optional: faster-whisper for improved performance (alternative to openai-whisper)
+# faster-whisper>=1.0.0
+

@@ -189,7 +189,8 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
         transcript_content = create_transcript_markdown(metadata, transcript_with_timestamps)
         
         # Save transcript file (in transcripts subdirectory)
-        filename_base = sanitize_filename(metadata['title'])
+        date_prefix = datetime.now().strftime('%Y-%m-%d')
+        filename_base = f"{date_prefix} {sanitize_filename(metadata['title'])}"
         transcript_output_dir = os.path.join(output_dir, "transcripts")
         transcript_path = ensure_output_path(transcript_output_dir, f"{filename_base}-transcript.md")
         with open(transcript_path, 'w', encoding='utf-8') as f:

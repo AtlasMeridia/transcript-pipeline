@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src/ ./src/
 COPY server.py .
+COPY frontend/ ./frontend/
 
 # Create output directory
 RUN mkdir -p /app/output

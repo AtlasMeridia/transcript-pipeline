@@ -17,6 +17,7 @@ import io
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 
 # Add src to path for imports
@@ -254,6 +255,15 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
 @app.get("/")
 async def root():
+    """Serve the frontend HTML."""
+    frontend_path = Path(__file__).parent / "frontend" / "index.html"
+    if frontend_path.exists():
+        return FileResponse(frontend_path, media_type="text/html")
+    return {"error": "Frontend not found"}
+
+
+@app.get("/api/health")
+async def health():
     """Health check endpoint."""
     return {
         "service": "Transcript Pipeline API",

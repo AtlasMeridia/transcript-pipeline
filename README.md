@@ -19,27 +19,36 @@ transcript-pipeline/
 ├── Dockerfile              # Docker image configuration
 ├── docker-compose.yml      # Docker Compose setup (API + CLI services)
 ├── requirements.txt        # Python dependencies
-├── server.py              # FastAPI web server
-├── .env.example           # Environment variables template
-├── .gitignore             # Git ignore rules
-├── README.md              # This file
+├── server.py               # FastAPI web server with SSE streaming
+├── entrypoint.sh           # Docker CLI entrypoint with validation
+├── .env.example            # Environment variables template
+├── README.md               # This file
+├── CLAUDE.md               # Claude Code guidance
 ├── src/
 │   ├── __init__.py
-│   ├── main.py            # CLI entry point
-│   ├── downloader.py      # YouTube audio download
-│   ├── transcriber.py     # Scribe/Whisper transcription
-│   ├── extractor.py       # AI extraction
-│   └── utils.py           # Helper functions
+│   ├── main.py             # CLI entry point (thin wrapper)
+│   ├── config.py           # Centralized configuration and constants
+│   ├── models.py           # Shared data models (Segment, etc.)
+│   ├── downloader.py       # YouTube audio download via yt-dlp
+│   ├── transcriber.py      # Whisper/ElevenLabs transcription engines
+│   ├── extractor.py        # LLM-based content extraction
+│   ├── utils.py            # Helper functions and utilities
+│   └── services/
+│       ├── __init__.py
+│       ├── pipeline_service.py   # Core pipeline logic (process_video)
+│       └── markdown_service.py   # Markdown generation functions
 ├── frontend/
-│   └── index.html         # Web interface (standalone HTML)
-├── tests/                 # Test suite
+│   └── index.html          # Web interface (standalone HTML)
+├── tests/                  # Test suite
 │   ├── test_utils.py
 │   └── test_transcriber_scribe_parsing.py
-├── output/                # Generated files (gitignored)
-│   ├── audio/             # Temporary audio files
-│   ├── transcripts/       # Transcript markdown files
-│   └── summaries/         # Summary markdown files
-└── models/                # Whisper model cache (gitignored)
+├── dev/
+│   └── REFACTORING.md      # Refactoring progress documentation
+├── output/                 # Generated files (gitignored)
+│   ├── audio/              # Temporary audio files
+│   ├── transcripts/        # Transcript markdown files
+│   └── summaries/          # Summary markdown files
+└── models/                 # Whisper model cache (gitignored)
 ```
 
 ## Prerequisites
@@ -463,26 +472,37 @@ chmod +x process-videos.sh
 
 ### Programmatic Usage
 
-The `process_video()` function can be imported and used as a library:
+The `process_video()` function can be imported from the services package and used as a library:
 
 ```python
-from src.main import process_video
+from src.services import process_video
 
 result = process_video(
     url="https://youtube.com/watch?v=VIDEO_ID",
     llm_type="claude",
     output_dir="./output",
-    transcription_engine="scribe",
-    elevenlabs_api_key="your_key",
-    scribe_model_id="scribe_v2",
-    raise_on_error=True  # Returns result dict instead of exiting
+    transcription_engine="whisper",  # or "elevenlabs"
+    no_extract=False,  # Set True to skip extraction
 )
 
 if result['success']:
     print(f"Transcript: {result['transcript_path']}")
     print(f"Summary: {result['summary_path']}")
+    print(f"Segments: {len(result['segments'])}")
 else:
     print(f"Error: {result['error']}")
+```
+
+You can also provide a status callback for progress updates:
+
+```python
+def my_callback(phase, status, message):
+    print(f"[{phase}] {status}: {message}")
+
+result = process_video(
+    url="https://youtube.com/watch?v=VIDEO_ID",
+    status_callback=my_callback,
+)
 ```
 
 ### Custom Extraction Prompts

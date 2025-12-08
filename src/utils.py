@@ -1,17 +1,27 @@
 """Utility functions for transcript pipeline."""
 
 import re
-import os
 import time
 import logging
 from pathlib import Path
-from typing import Optional, Callable, Any
-from dotenv import load_dotenv
+from typing import Callable, Any
+
+# Re-export config functions for backward compatibility
+from .config import (
+    load_config,
+    validate_config,
+    ConfigurationError,
+    load_pipeline_config,
+    PipelineConfig,
+    # Constants
+    MAX_FILENAME_LENGTH,
+    DESCRIPTION_TRUNCATE_LENGTH,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def sanitize_filename(title: str, max_length: int = 200) -> str:
+def sanitize_filename(title: str, max_length: int = MAX_FILENAME_LENGTH) -> str:
     """
     Sanitize video title into filesystem-safe slug.
 
@@ -82,41 +92,6 @@ def ensure_output_path(output_dir: str, filename: str) -> Path:
     return file_path
 
 
-def load_config() -> dict:
-    """
-    Load configuration from environment variables.
-
-    Returns:
-        Dictionary containing configuration values
-    """
-    load_dotenv()
-
-    config = {
-        # LLM Configuration
-        'anthropic_api_key': os.getenv('ANTHROPIC_API_KEY'),
-        'openai_api_key': os.getenv('OPENAI_API_KEY'),
-        'default_llm': os.getenv('DEFAULT_LLM', 'claude'),
-        'claude_model_id': os.getenv('CLAUDE_MODEL_ID', 'claude-sonnet-4-5'),
-        'openai_model_id': os.getenv('OPENAI_MODEL_ID', 'gpt-4o-mini'),
-        
-        # Output Configuration
-        'output_dir': os.getenv('OUTPUT_DIR', './output'),
-        
-        # Transcription Configuration
-        'transcription_engine': os.getenv('TRANSCRIPTION_ENGINE', 'whisper').lower(),
-        
-        # Whisper Configuration (local)
-        'whisper_model': os.getenv('WHISPER_MODEL', 'large-v3'),
-        'whisper_model_dir': os.getenv('WHISPER_MODEL_DIR'),
-        
-        # ElevenLabs Configuration (cloud)
-        'elevenlabs_api_key': os.getenv('ELEVENLABS_API_KEY'),
-        'scribe_model_id': os.getenv('SCRIBE_MODEL_ID', 'scribe_v2'),
-    }
-
-    return config
-
-
 def retry_with_backoff(
     func: Callable,
     max_retries: int = 3,
@@ -181,3 +156,43 @@ def format_duration(seconds: int) -> str:
         parts.append(f"{secs}s")
 
     return " ".join(parts)
+
+
+class TimedOperation:
+    """Context manager for timing operations with logging.
+
+    Usage:
+        with TimedOperation("Transcribing audio"):
+            result = transcriber.transcribe(audio_path)
+        # Logs: "Transcribing audio completed in 45.2s"
+    """
+
+    def __init__(self, operation_name: str, log_level: str = "info"):
+        """
+        Initialize the timed operation.
+
+        Args:
+            operation_name: Description of the operation being timed
+            log_level: Logging level ('debug', 'info', 'warning')
+        """
+        self.operation_name = operation_name
+        self.log_level = log_level
+        self.start_time = None
+        self.elapsed = None
+
+    def __enter__(self):
+        self.start_time = time.perf_counter()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.elapsed = time.perf_counter() - self.start_time
+
+        if exc_type is None:
+            msg = f"{self.operation_name} completed in {self.elapsed:.1f}s"
+        else:
+            msg = f"{self.operation_name} failed after {self.elapsed:.1f}s"
+
+        log_func = getattr(logger, self.log_level, logger.info)
+        log_func(msg)
+
+        return False  # Don't suppress exceptions

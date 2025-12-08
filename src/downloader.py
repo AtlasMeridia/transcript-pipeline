@@ -97,7 +97,7 @@ class VideoDownloader:
         }
 
         try:
-            logger.info("Downloading audio from: %s", metadata["title"])
+            logger.info(f"Downloading audio from: {metadata['title']}")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
 
@@ -107,7 +107,7 @@ class VideoDownloader:
             if not audio_file.exists():
                 raise Exception(f"Downloaded file not found: {audio_file}")
 
-            logger.info("Audio downloaded successfully: %s", audio_file)
+            logger.info(f"Audio downloaded successfully: {audio_file}")
             return str(audio_file), metadata
 
         except Exception as e:
@@ -123,6 +123,26 @@ class VideoDownloader:
         try:
             if os.path.exists(audio_path):
                 os.remove(audio_path)
-                logger.info("Cleaned up audio file: %s", audio_path)
+                logger.info(f"Cleaned up audio file: {audio_path}")
         except Exception as e:
-            logger.warning("Failed to cleanup audio file: %s", e)
+            logger.warning(f"Failed to cleanup audio file: {e}")
+
+
+def get_downloader(output_dir: Optional[str] = None) -> VideoDownloader:
+    """
+    Factory function to create a VideoDownloader.
+
+    Args:
+        output_dir: Output directory for audio files.
+                   If None, uses OUTPUT_DIR from environment or './output'
+
+    Returns:
+        Configured VideoDownloader instance
+    """
+    if output_dir is None:
+        import os
+        output_dir = os.getenv('OUTPUT_DIR', './output')
+        # Audio goes in a subdirectory
+        output_dir = os.path.join(output_dir, 'audio')
+
+    return VideoDownloader(output_dir=output_dir)

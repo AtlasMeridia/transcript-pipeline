@@ -7,23 +7,20 @@ from anthropic import Anthropic
 from openai import OpenAI
 
 from .utils import retry_with_backoff
+from .config import (
+    DEFAULT_CLAUDE_MODEL,
+    DEFAULT_GPT_MODEL,
+    DEPRECATED_CLAUDE_MODELS,
+    MAX_CHARS_PER_CHUNK,
+    MAX_TOKENS_OUTPUT,
+    GPT_TEMPERATURE,
+)
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5"
-DEFAULT_GPT_MODEL = "gpt-4o-mini"
-
-DEPRECATED_CLAUDE_MODELS = {
-    "claude-3-5-sonnet-20241022": DEFAULT_CLAUDE_MODEL,
-    "claude-3-5-sonnet-latest": DEFAULT_CLAUDE_MODEL,
-}
 
 
 class TranscriptExtractor:
     """Extracts key information from transcripts using AI."""
-
-    # Rough character budget per chunk to keep prompts within context limits
-    MAX_CHARS_PER_CHUNK = 8000
 
     EXTRACTION_PROMPT = """You are analyzing a transcript from a YouTube video. Your task is to extract the most relevant and important information.
 
@@ -133,7 +130,7 @@ Part summaries:
         duration_str = format_duration(metadata.get("duration", 0))
 
         # Simple path for shorter transcripts: single extraction call
-        if len(transcript) <= self.MAX_CHARS_PER_CHUNK:
+        if len(transcript) <= MAX_CHARS_PER_CHUNK:
             prompt = self.EXTRACTION_PROMPT.format(
                 title=title,
                 author=author,
@@ -153,7 +150,7 @@ Part summaries:
         part_summaries: List[str] = []
         total_parts = len(chunks)
         for idx, chunk in enumerate(chunks, start=1):
-            logger.info("Summarizing transcript chunk %d/%d...", idx, total_parts)
+            logger.info(f"Summarizing transcript chunk {idx}/{total_parts}...")
             part_prompt = self.CHUNK_SUMMARY_PROMPT.format(
                 index=idx,
                 total=total_parts,
@@ -197,7 +194,7 @@ Part summaries:
                 continue
 
             # If adding this paragraph would exceed the limit, start a new chunk
-            if current and current_len + len(para) + 2 > self.MAX_CHARS_PER_CHUNK:
+            if current and current_len + len(para) + 2 > MAX_CHARS_PER_CHUNK:
                 chunks.append("\n\n".join(current))
                 current = [para]
                 current_len = len(para)
@@ -229,7 +226,7 @@ Part summaries:
             def call_claude():
                 response = self.client.messages.create(
                     model=self.model_id,
-                    max_tokens=4000,
+                    max_tokens=MAX_TOKENS_OUTPUT,
                     messages=[{
                         "role": "user",
                         "content": prompt
@@ -275,8 +272,8 @@ Part summaries:
                         "role": "user",
                         "content": prompt
                     }],
-                    max_tokens=4000,
-                    temperature=0.3,
+                    max_tokens=MAX_TOKENS_OUTPUT,
+                    temperature=GPT_TEMPERATURE,
                 )
                 return response.choices[0].message.content
 
@@ -291,3 +288,56 @@ Part summaries:
 
         except Exception as e:
             raise Exception(f"GPT extraction failed: {str(e)}")
+
+
+def get_extractor(
+    llm_type: Optional[str] = None,
+    api_key: Optional[str] = None,
+    model_id: Optional[str] = None,
+    config: Optional[dict] = None,
+) -> TranscriptExtractor:
+    """
+    Factory function to create a TranscriptExtractor.
+
+    Args:
+        llm_type: LLM type ('claude' or 'gpt'). If None, uses DEFAULT_LLM from config.
+        api_key: API key for the LLM. If None, uses appropriate key from config.
+        model_id: Model identifier. If None, uses default from config.
+        config: Optional pre-loaded configuration dictionary.
+
+    Returns:
+        Configured TranscriptExtractor instance
+
+    Raises:
+        ValueError: If required API key is not available
+    """
+    import os
+
+    # Load config if not provided
+    if config is None:
+        from .config import load_config
+        config = load_config()
+
+    # Determine LLM type
+    if llm_type is None:
+        llm_type = config.get('default_llm', 'claude')
+
+    # Get API key based on LLM type
+    if api_key is None:
+        if llm_type == 'claude':
+            api_key = config.get('anthropic_api_key')
+        else:
+            api_key = config.get('openai_api_key')
+
+    # Get model ID
+    if model_id is None:
+        if llm_type == 'claude':
+            model_id = config.get('claude_model_id')
+        else:
+            model_id = config.get('openai_model_id')
+
+    return TranscriptExtractor(
+        llm_type=llm_type,
+        api_key=api_key,
+        model_id=model_id,
+    )

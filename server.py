@@ -7,11 +7,11 @@ import asyncio
 import json
 import os
 import sys
+import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, AsyncGenerator
-from contextlib import redirect_stdout, redirect_stderr
+from typing import Dict, Optional, AsyncGenerator, Set
 import io
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -27,6 +27,7 @@ from src.utils import load_config, sanitize_filename, ensure_output_path, format
 from src.downloader import VideoDownloader
 from src.transcriber import get_transcriber, BaseTranscriber
 from src.extractor import TranscriptExtractor
+from src.services import create_transcript_markdown, create_summary_markdown
 
 
 # ============================================================================
@@ -57,8 +58,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory job storage (use Redis in production)
-jobs: dict = {}
+# In-memory job storage with thread-safe access
+jobs: Dict[str, dict] = {}
+jobs_lock = threading.RLock()
+
+# SSE event queues for real-time streaming (job_id -> set of queues)
+job_event_queues: Dict[str, Set[asyncio.Queue]] = {}
+queues_lock = threading.Lock()
 
 
 # ============================================================================
@@ -80,97 +86,146 @@ class JobStatus(BaseModel):
     metadata: Optional[dict] = None
     transcript_path: Optional[str] = None
     summary_path: Optional[str] = None
-    transcript_content: Optional[str] = None
-    summary_content: Optional[str] = None
+    # Note: content is read from disk on demand via /transcript and /summary endpoints
     error: Optional[str] = None
     created_at: str
     completed_at: Optional[str] = None
 
 
 # ============================================================================
+# Thread-Safe Job Access
+# ============================================================================
+
+def get_job(job_id: str) -> Optional[dict]:
+    """Thread-safe job retrieval."""
+    with jobs_lock:
+        return jobs.get(job_id)
+
+
+def set_job(job_id: str, job: dict) -> None:
+    """Thread-safe job creation/update."""
+    with jobs_lock:
+        jobs[job_id] = job
+
+
+def update_job(job_id: str, **updates) -> Optional[dict]:
+    """Thread-safe job field updates. Returns updated job or None if not found."""
+    with jobs_lock:
+        if job_id not in jobs:
+            return None
+        jobs[job_id].update(updates)
+        return jobs[job_id].copy()
+
+
+# ============================================================================
+# SSE Event Broadcasting
+# ============================================================================
+
+def broadcast_job_update(job_id: str, job_data: dict) -> None:
+    """
+    Push job update to all connected SSE clients for this job.
+    This is called from the processing thread and schedules async queue puts.
+    """
+    with queues_lock:
+        queues = job_event_queues.get(job_id, set())
+        for queue in queues:
+            try:
+                # Use call_soon_threadsafe to schedule from sync context
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(queue.put_nowait, job_data)
+            except RuntimeError:
+                # Event loop not running, skip
+                pass
+            except asyncio.QueueFull:
+                # Queue full, skip this update
+                pass
+
+
+def register_sse_queue(job_id: str, queue: asyncio.Queue) -> None:
+    """Register an SSE queue for a job."""
+    with queues_lock:
+        if job_id not in job_event_queues:
+            job_event_queues[job_id] = set()
+        job_event_queues[job_id].add(queue)
+
+
+def unregister_sse_queue(job_id: str, queue: asyncio.Queue) -> None:
+    """Unregister an SSE queue for a job."""
+    with queues_lock:
+        if job_id in job_event_queues:
+            job_event_queues[job_id].discard(queue)
+            if not job_event_queues[job_id]:
+                del job_event_queues[job_id]
+
+
+# ============================================================================
 # Pipeline Processing
 # ============================================================================
 
-def create_transcript_markdown(metadata: dict, transcript: str) -> str:
-    """Generate transcript markdown content."""
-    return f"""# {metadata['title']}
-
-**Author**: {metadata['author']}
-**Date**: {metadata['upload_date']}
-**URL**: {metadata['url']}
-**Duration**: {format_duration(metadata['duration'])}
-
-## Description
-{metadata['description'][:500]}{'...' if len(metadata['description']) > 500 else ''}
-
-## Transcript
-
-{transcript}
-"""
-
-
-def create_summary_markdown(metadata: dict, summary: str) -> str:
-    """Generate summary markdown content."""
-    return f"""# {metadata['title']} - Summary
-
-**Author**: {metadata['author']}
-**Date**: {metadata['upload_date']}
-**Processed**: {datetime.now().strftime('%Y-%m-%d')}
-
----
-
-{summary}
-"""
+def _update_and_broadcast(job_id: str, **updates) -> None:
+    """Helper to update job and broadcast to SSE clients."""
+    job = update_job(job_id, **updates)
+    if job:
+        broadcast_job_update(job_id, job)
 
 
 async def process_video_async(job_id: str, url: str, llm_type: str, extract: bool):
     """
     Process a video asynchronously, updating job status as we go.
+    Uses thread-safe job updates and broadcasts events to SSE clients.
     """
-    job = jobs[job_id]
     config = load_config()
     output_dir = config.get('output_dir', './output')
-    
-    # Get transcription configuration (ElevenLabs only)
+
+    # Get transcription configuration
     elevenlabs_api_key = config.get('elevenlabs_api_key')
     scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
-    
+
     try:
         # ----------------------------------------------------------------
         # Step 1: Download
         # ----------------------------------------------------------------
-        job['status'] = 'downloading'
-        job['phase'] = 'download'
-        job['message'] = 'Fetching video metadata...'
-        
+        _update_and_broadcast(job_id,
+            status='downloading',
+            phase='download',
+            message='Fetching video metadata...',
+            progress=0
+        )
+
         # Audio files go to audio subdirectory
         audio_dir = os.path.join(output_dir, "audio")
         downloader = VideoDownloader(output_dir=audio_dir)
-        
+
         # Run blocking download in thread pool
         loop = asyncio.get_running_loop()
         audio_path, metadata = await loop.run_in_executor(
             None, downloader.download_audio, url
         )
-        
-        job['metadata'] = {
+
+        job_metadata = {
             'title': metadata['title'],
             'author': metadata['author'],
             'date': metadata['upload_date'],
             'duration': format_duration(metadata['duration']),
             'url': metadata['url'],
         }
-        job['message'] = f"Downloaded: {metadata['title']}"
-        
+        _update_and_broadcast(job_id,
+            metadata=job_metadata,
+            message=f"Downloaded: {metadata['title']}",
+            progress=20
+        )
+
         # ----------------------------------------------------------------
         # Step 2: Transcribe
         # ----------------------------------------------------------------
-        job['status'] = 'transcribing'
-        job['phase'] = 'transcribing'
-        job['message'] = 'Initializing transcription...'
-        
-        # Get configured transcription engine
         transcription_engine = config.get('transcription_engine', 'whisper')
+        _update_and_broadcast(job_id,
+            status='transcribing',
+            phase='transcribing',
+            message='Initializing transcription...',
+            progress=25
+        )
+
         transcriber = get_transcriber(
             engine=transcription_engine,
             api_key=elevenlabs_api_key,
@@ -178,16 +233,34 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
             model_name=config.get('whisper_model'),
             model_dir=config.get('whisper_model_dir'),
         )
-        
-        job['message'] = f'Transcribing audio with {transcriber.engine_name}...'
-        segments = await loop.run_in_executor(
-            None, transcriber.transcribe, audio_path
+
+        # Progress callback for granular transcription updates
+        def transcription_progress(current: int, total: int, message: str = None):
+            """Callback for transcription progress updates."""
+            if total > 0:
+                # Scale progress from 25-70 during transcription
+                pct = int(25 + (current / total) * 45)
+                msg = message or f'Transcribing with {transcriber.engine_name}... ({current}/{total})'
+            else:
+                pct = 30
+                msg = message or f'Transcribing with {transcriber.engine_name}...'
+            _update_and_broadcast(job_id, progress=pct, message=msg)
+
+        _update_and_broadcast(job_id,
+            message=f'Transcribing audio with {transcriber.engine_name}...',
+            progress=30
         )
-        
+
+        # Pass progress callback to transcriber
+        segments = await loop.run_in_executor(
+            None,
+            lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
+        )
+
         # Format transcript
         transcript_with_timestamps = transcriber.format_transcript(segments, include_timestamps=True)
         transcript_content = create_transcript_markdown(metadata, transcript_with_timestamps)
-        
+
         # Save transcript file (in transcripts subdirectory)
         date_prefix = datetime.now().strftime('%Y-%m-%d')
         filename_base = f"{date_prefix} {sanitize_filename(metadata['title'])}"
@@ -195,64 +268,85 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
         transcript_path = ensure_output_path(transcript_output_dir, f"{filename_base}-transcript.md")
         with open(transcript_path, 'w', encoding='utf-8') as f:
             f.write(transcript_content)
-        
-        job['transcript_path'] = str(transcript_path)
-        job['transcript_content'] = transcript_content
-        job['message'] = f"Transcription complete ({len(segments)} segments)"
-        
+
+        # Store path only, not content (memory efficiency)
+        _update_and_broadcast(job_id,
+            transcript_path=str(transcript_path),
+            message=f"Transcription complete ({len(segments)} segments)",
+            progress=70
+        )
+
         # ----------------------------------------------------------------
         # Step 3: Extract (optional)
         # ----------------------------------------------------------------
         if extract:
-            job['status'] = 'extracting'
-            job['phase'] = 'extracting'
-            job['message'] = 'Sending to Claude for analysis...'
-            
+            _update_and_broadcast(job_id,
+                status='extracting',
+                phase='extracting',
+                message=f'Sending to {llm_type.upper()} for analysis...',
+                progress=75
+            )
+
             # Get API key
             if llm_type == "claude":
                 api_key = config.get('anthropic_api_key')
             else:
                 api_key = config.get('openai_api_key')
-            
+
             if api_key:
                 model_id = config.get('claude_model_id') if llm_type == "claude" else config.get('openai_model_id')
                 extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key, model_id=model_id)
                 full_text = transcriber.get_full_text(segments)
-                
-                job['message'] = 'Extracting key insights...'
+
+                _update_and_broadcast(job_id,
+                    message='Extracting key insights...',
+                    progress=80
+                )
+
                 summary = await loop.run_in_executor(
                     None, extractor.extract, full_text, metadata
                 )
-                
+
                 summary_content = create_summary_markdown(metadata, summary)
-                
+
                 # Save summary file (in summaries subdirectory)
                 summary_output_dir = os.path.join(output_dir, "summaries")
                 summary_path = ensure_output_path(summary_output_dir, f"{filename_base}-summary.md")
                 with open(summary_path, 'w', encoding='utf-8') as f:
                     f.write(summary_content)
-                
-                job['summary_path'] = str(summary_path)
-                job['summary_content'] = summary_content
-                job['message'] = 'Extraction complete'
+
+                # Store path only, not content (memory efficiency)
+                _update_and_broadcast(job_id,
+                    summary_path=str(summary_path),
+                    message='Extraction complete',
+                    progress=95
+                )
             else:
-                job['message'] = f'Skipped extraction: {llm_type.upper()} API key not found'
-        
+                _update_and_broadcast(job_id,
+                    message=f'Skipped extraction: {llm_type.upper()} API key not found',
+                    progress=95
+                )
+
         # ----------------------------------------------------------------
         # Cleanup and complete
         # ----------------------------------------------------------------
         await loop.run_in_executor(None, downloader.cleanup_audio, audio_path)
-        
-        job['status'] = 'complete'
-        job['phase'] = 'complete'
-        job['message'] = 'Pipeline complete'
-        job['completed_at'] = datetime.now().isoformat()
-        
+
+        _update_and_broadcast(job_id,
+            status='complete',
+            phase='complete',
+            message='Pipeline complete',
+            progress=100,
+            completed_at=datetime.now().isoformat()
+        )
+
     except Exception as e:
-        job['status'] = 'error'
-        job['error'] = str(e)
-        job['message'] = f'Error: {str(e)}'
-        job['completed_at'] = datetime.now().isoformat()
+        _update_and_broadcast(job_id,
+            status='error',
+            error=str(e),
+            message=f'Error: {str(e)}',
+            completed_at=datetime.now().isoformat()
+        )
 
 
 # ============================================================================
@@ -285,12 +379,12 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
     Returns a job ID that can be used to track progress.
     """
     config = load_config()
-    
-    # Create job
+
+    # Create job with thread-safe access
     job_id = str(uuid.uuid4())[:8]
     llm_type = request.llm_type or config.get('default_llm', 'claude')
-    
-    jobs[job_id] = {
+
+    job = {
         'job_id': job_id,
         'status': 'pending',
         'phase': None,
@@ -299,13 +393,13 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
         'metadata': None,
         'transcript_path': None,
         'summary_path': None,
-        'transcript_content': None,
-        'summary_content': None,
+        # Note: content is read from disk on demand, not stored in job
         'error': None,
         'created_at': datetime.now().isoformat(),
         'completed_at': None,
     }
-    
+    set_job(job_id, job)
+
     # Start processing in background
     background_tasks.add_task(
         process_video_async,
@@ -314,16 +408,17 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
         llm_type,
         request.extract
     )
-    
-    return JobStatus(**jobs[job_id])
+
+    return JobStatus(**job)
 
 
 @app.get("/api/jobs/{job_id}", response_model=JobStatus)
 async def get_job_status(job_id: str):
     """Get the current status of a processing job."""
-    if job_id not in jobs:
+    job = get_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JobStatus(**jobs[job_id])
+    return JobStatus(**job)
 
 
 @app.get("/api/jobs/{job_id}/stream")
@@ -331,92 +426,128 @@ async def stream_job_status(job_id: str):
     """
     Stream job status updates via Server-Sent Events.
     Connect to this endpoint to receive real-time progress updates.
+    Uses push-based streaming via asyncio.Queue for near-instant updates.
     """
-    if job_id not in jobs:
+    job = get_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    
+
     async def event_generator() -> AsyncGenerator[str, None]:
-        last_status = None
-        last_message = None
-        
-        while True:
-            job = jobs.get(job_id)
-            if not job:
-                break
-            
-            # Send update if status or message changed
-            current_state = (job['status'], job['message'])
-            if current_state != (last_status, last_message):
-                last_status, last_message = current_state
-                data = json.dumps(job)
-                yield f"data: {data}\n\n"
-            
-            # Stop streaming when job is complete or errored
-            if job['status'] in ('complete', 'error'):
-                break
-            
-            await asyncio.sleep(0.5)  # Poll every 500ms
-    
+        # Create a queue for this SSE connection
+        queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+        register_sse_queue(job_id, queue)
+
+        try:
+            # Send initial state immediately
+            current_job = get_job(job_id)
+            if current_job:
+                yield f"data: {json.dumps(current_job)}\n\n"
+
+                # If already complete, stop
+                if current_job['status'] in ('complete', 'error'):
+                    return
+
+            # Wait for pushed updates
+            while True:
+                try:
+                    # Wait for next update with timeout
+                    job_data = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield f"data: {json.dumps(job_data)}\n\n"
+
+                    # Stop streaming when job is complete or errored
+                    if job_data.get('status') in ('complete', 'error'):
+                        break
+                except asyncio.TimeoutError:
+                    # Send keepalive comment to prevent connection timeout
+                    yield ": keepalive\n\n"
+
+                    # Check if job still exists
+                    current_job = get_job(job_id)
+                    if not current_job or current_job['status'] in ('complete', 'error'):
+                        break
+        finally:
+            unregister_sse_queue(job_id, queue)
+
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
         }
     )
 
 
 @app.get("/api/jobs/{job_id}/transcript")
 async def get_transcript(job_id: str):
-    """Get the transcript content for a completed job."""
-    if job_id not in jobs:
+    """Get the transcript content for a completed job.
+
+    Content is read from disk on demand for memory efficiency.
+    """
+    job = get_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    if not job.get('transcript_content'):
+
+    transcript_path = job.get('transcript_path')
+    if not transcript_path or not Path(transcript_path).exists():
         raise HTTPException(status_code=404, detail="Transcript not available")
-    
+
+    # Read from disk on demand
+    try:
+        content = Path(transcript_path).read_text(encoding='utf-8')
+    except IOError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read transcript: {e}")
+
     return {
-        "content": job['transcript_content'],
-        "path": job['transcript_path'],
+        "content": content,
+        "path": transcript_path,
     }
 
 
 @app.get("/api/jobs/{job_id}/summary")
 async def get_summary(job_id: str):
-    """Get the summary content for a completed job."""
-    if job_id not in jobs:
+    """Get the summary content for a completed job.
+
+    Content is read from disk on demand for memory efficiency.
+    """
+    job = get_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    if not job.get('summary_content'):
+
+    summary_path = job.get('summary_path')
+    if not summary_path or not Path(summary_path).exists():
         raise HTTPException(status_code=404, detail="Summary not available")
-    
+
+    # Read from disk on demand
+    try:
+        content = Path(summary_path).read_text(encoding='utf-8')
+    except IOError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read summary: {e}")
+
     return {
-        "content": job['summary_content'],
-        "path": job['summary_path'],
+        "content": content,
+        "path": summary_path,
     }
 
 
 @app.get("/api/jobs/{job_id}/download/{file_type}")
 async def download_file(job_id: str, file_type: str):
     """Download the transcript or summary file."""
-    if job_id not in jobs:
+    job = get_job(job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
-    
-    job = jobs[job_id]
-    
+
     if file_type == "transcript":
         path = job.get('transcript_path')
     elif file_type == "summary":
         path = job.get('summary_path')
     else:
         raise HTTPException(status_code=400, detail="Invalid file type")
-    
+
     if not path or not Path(path).exists():
         raise HTTPException(status_code=404, detail="File not found")
-    
+
     return FileResponse(
         path,
         media_type="text/markdown",

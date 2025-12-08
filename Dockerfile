@@ -44,6 +44,7 @@ RUN if [ "$INSTALL_WHISPER" = "true" ]; then \
 COPY src/ ./src/
 COPY server.py .
 COPY frontend/ ./frontend/
+COPY entrypoint.sh .
 
 # Create output directory and model cache directory
 RUN mkdir -p /app/output /app/models

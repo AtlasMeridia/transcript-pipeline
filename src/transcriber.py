@@ -6,11 +6,17 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable, Dict, List, Optional
 
 from .utils import format_timestamp
+from .config import (
+    SEGMENT_GAP_THRESHOLD_SECONDS,
+    CHUNK_DURATION_SECONDS,
+    CHUNK_OVERLAP_SECONDS,
+    MIN_AUDIO_DURATION_FOR_CHUNKING,
+)
+from .models import Segment
 
 logger = logging.getLogger(__name__)
 
@@ -24,22 +30,6 @@ try:
     import whisper
 except ImportError:
     whisper = None
-
-
-# =============================================================================
-# Data Classes
-# =============================================================================
-
-@dataclass
-class Segment:
-    """Container for transcription segments."""
-
-    start: float
-    end: float
-    text: str
-
-    def as_dict(self) -> Dict[str, Any]:
-        return {"start": float(self.start), "end": float(self.end), "text": self.text.strip()}
 
 
 # =============================================================================
@@ -61,7 +51,7 @@ class BaseTranscriber(ABC):
         audio_path: str,
         language: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Dict]:
+    ) -> List[Segment]:
         """
         Transcribe audio file with timestamps.
 
@@ -71,19 +61,19 @@ class BaseTranscriber(ABC):
             progress_callback: Optional callback(current_chunk, total_chunks)
 
         Returns:
-            List of segment dictionaries with 'start', 'end', and 'text' keys
+            List of Segment objects with start, end, and text attributes
 
         Raises:
             Exception: If transcription fails
         """
         pass
 
-    def format_transcript(self, segments: List[Dict], include_timestamps: bool = True) -> str:
+    def format_transcript(self, segments: List[Segment], include_timestamps: bool = True) -> str:
         """
         Format transcript segments into readable text.
 
         Args:
-            segments: List of segment dictionaries
+            segments: List of Segment objects
             include_timestamps: Whether to include timestamps
 
         Returns:
@@ -93,24 +83,24 @@ class BaseTranscriber(ABC):
 
         for segment in segments:
             if include_timestamps:
-                timestamp = format_timestamp(segment["start"])
-                lines.append(f"{timestamp} {segment['text']}")
+                timestamp = format_timestamp(segment.start)
+                lines.append(f"{timestamp} {segment.text}")
             else:
-                lines.append(segment["text"])
+                lines.append(segment.text)
 
         return "\n".join(lines)
 
-    def get_full_text(self, segments: List[Dict]) -> str:
+    def get_full_text(self, segments: List[Segment]) -> str:
         """
         Get plain text transcript without timestamps.
 
         Args:
-            segments: List of segment dictionaries
+            segments: List of Segment objects
 
         Returns:
             Plain text transcript
         """
-        return " ".join(segment["text"] for segment in segments)
+        return " ".join(segment.text for segment in segments)
 
 
 # =============================================================================
@@ -118,7 +108,11 @@ class BaseTranscriber(ABC):
 # =============================================================================
 
 class WhisperTranscriber(BaseTranscriber):
-    """Transcribes audio using OpenAI Whisper locally."""
+    """Transcribes audio using OpenAI Whisper locally.
+
+    For long audio files (> 30 minutes), automatically splits into chunks
+    with overlap to prevent memory issues and enable progress tracking.
+    """
 
     def __init__(
         self,
@@ -150,22 +144,56 @@ class WhisperTranscriber(BaseTranscriber):
         """Load the Whisper model, downloading if necessary."""
         if self._model is None:
             logger.info(f"Loading Whisper model '{self.model_name}' from {self.model_dir}...")
-            # Set download root for model persistence
             self._model = whisper.load_model(self.model_name, download_root=self.model_dir)
             logger.info(f"Whisper model '{self.model_name}' loaded successfully")
         return self._model
 
-    def transcribe(
-        self,
-        audio_path: str,
-        language: Optional[str] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Dict]:
-        """Transcribe audio using Whisper."""
-        model = self._ensure_model()
-        logger.info(f"Transcribing with Whisper ({self.model_name})...")
+    def _get_audio_duration(self, audio_path: str) -> float:
+        """Get audio duration in seconds using ffprobe."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    audio_path
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return float(result.stdout.strip())
+        except (subprocess.SubprocessError, ValueError) as e:
+            logger.warning(f"Could not get audio duration via ffprobe: {e}")
+        return 0.0
 
-        # Whisper transcription options
+    def _extract_chunk(self, audio_path: str, start_seconds: float, duration_seconds: float, output_path: str) -> bool:
+        """Extract a chunk of audio using ffmpeg."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-ss", str(start_seconds),
+                    "-i", audio_path,
+                    "-t", str(duration_seconds),
+                    "-acodec", "copy",
+                    output_path
+                ],
+                capture_output=True,
+                timeout=120
+            )
+            return result.returncode == 0
+        except subprocess.SubprocessError as e:
+            logger.error(f"Failed to extract audio chunk: {e}")
+            return False
+
+    def _transcribe_single(self, audio_path: str, language: Optional[str] = None) -> List[Segment]:
+        """Transcribe a single audio file (no chunking)."""
+        model = self._ensure_model()
+
         options = {
             "verbose": False,
             "word_timestamps": False,
@@ -175,7 +203,6 @@ class WhisperTranscriber(BaseTranscriber):
 
         result = model.transcribe(audio_path, **options)
 
-        # Convert Whisper segments to our format
         segments = []
         for seg in result.get("segments", []):
             segments.append(Segment(
@@ -185,13 +212,143 @@ class WhisperTranscriber(BaseTranscriber):
             ))
 
         if not segments:
-            # Fall back to full text if no segments
             text = result.get("text", "").strip()
             if text:
                 segments.append(Segment(start=0.0, end=len(text.split()) * 0.3, text=text))
 
-        logger.info(f"Whisper transcription complete: {len(segments)} segments")
-        return [seg.as_dict() for seg in segments]
+        return segments
+
+    def _deduplicate_overlap(self, prev_segments: List[Segment], new_segments: List[Segment], overlap_start: float) -> List[Segment]:
+        """
+        Remove duplicate segments in the overlap region.
+
+        When chunks overlap by 5 seconds, both chunks may transcribe the same speech.
+        We keep segments from the previous chunk and discard duplicates from the new chunk.
+        """
+        if not prev_segments or not new_segments:
+            return new_segments
+
+        # Find the last timestamp in previous segments
+        last_prev_end = max(seg.end for seg in prev_segments)
+
+        # Keep only new segments that start after the overlap region
+        # Allow a small buffer (0.5s) for timing variations
+        buffer = 0.5
+        filtered = []
+        for seg in new_segments:
+            if seg.start >= overlap_start + buffer:
+                filtered.append(seg)
+            elif seg.end > last_prev_end + buffer:
+                # Segment spans the boundary - check for text overlap
+                # Simple heuristic: if text is very similar to last prev segment, skip
+                if prev_segments:
+                    last_text = prev_segments[-1].text.lower().strip()
+                    new_text = seg.text.lower().strip()
+                    # Skip if new text starts with or is contained in last text
+                    if last_text.endswith(new_text[:20]) or new_text.startswith(last_text[-20:]):
+                        continue
+                filtered.append(seg)
+
+        return filtered
+
+    def transcribe(
+        self,
+        audio_path: str,
+        language: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+    ) -> List[Segment]:
+        """
+        Transcribe audio using Whisper.
+
+        For audio longer than 30 minutes, automatically splits into chunks
+        to prevent memory issues and enable progress tracking.
+        """
+        model = self._ensure_model()
+        duration = self._get_audio_duration(audio_path)
+
+        # If short audio or can't determine duration, transcribe directly
+        if duration <= 0 or duration <= MIN_AUDIO_DURATION_FOR_CHUNKING:
+            logger.info(f"Transcribing with Whisper ({self.model_name})...")
+            if progress_callback:
+                progress_callback(0, 1)
+            segments = self._transcribe_single(audio_path, language)
+            if progress_callback:
+                progress_callback(1, 1)
+            logger.info(f"Whisper transcription complete: {len(segments)} segments")
+            return segments
+
+        # Long audio - use chunked transcription
+        logger.info(f"Long audio detected ({duration/60:.1f} min), using chunked transcription...")
+
+        import tempfile
+        import shutil
+
+        # Calculate chunks
+        chunk_duration = CHUNK_DURATION_SECONDS
+        overlap = CHUNK_OVERLAP_SECONDS
+        effective_duration = chunk_duration - overlap
+
+        chunks = []
+        start = 0.0
+        while start < duration:
+            chunk_end = min(start + chunk_duration, duration)
+            chunks.append((start, chunk_end - start))
+            start += effective_duration
+
+        total_chunks = len(chunks)
+        logger.info(f"Split into {total_chunks} chunks of ~{chunk_duration/60:.0f} minutes each")
+
+        # Create temp directory for chunk files
+        temp_dir = tempfile.mkdtemp(prefix="whisper_chunks_")
+        all_segments: List[Segment] = []
+
+        try:
+            for i, (chunk_start, chunk_len) in enumerate(chunks):
+                chunk_path = os.path.join(temp_dir, f"chunk_{i:03d}.mp3")
+
+                logger.info(f"Processing chunk {i+1}/{total_chunks} ({chunk_start/60:.1f}-{(chunk_start+chunk_len)/60:.1f} min)...")
+
+                if progress_callback:
+                    progress_callback(i, total_chunks)
+
+                # Extract chunk
+                if not self._extract_chunk(audio_path, chunk_start, chunk_len, chunk_path):
+                    logger.error(f"Failed to extract chunk {i+1}")
+                    continue
+
+                # Transcribe chunk
+                chunk_segments = self._transcribe_single(chunk_path, language)
+
+                # Adjust timestamps to original audio timeline
+                for seg in chunk_segments:
+                    seg.start += chunk_start
+                    seg.end += chunk_start
+
+                # Deduplicate overlap region (for all chunks after the first)
+                if i > 0 and all_segments:
+                    overlap_start = chunk_start
+                    chunk_segments = self._deduplicate_overlap(all_segments, chunk_segments, overlap_start)
+
+                all_segments.extend(chunk_segments)
+
+                # Clean up chunk file immediately to save disk space
+                try:
+                    os.remove(chunk_path)
+                except OSError:
+                    pass
+
+            if progress_callback:
+                progress_callback(total_chunks, total_chunks)
+
+        finally:
+            # Clean up temp directory
+            try:
+                shutil.rmtree(temp_dir)
+            except OSError as e:
+                logger.warning(f"Failed to clean up temp directory: {e}")
+
+        logger.info(f"Chunked Whisper transcription complete: {len(all_segments)} segments")
+        return all_segments
 
 
 # =============================================================================
@@ -306,7 +463,7 @@ class ElevenLabsTranscriber(BaseTranscriber):
                 segment_start = start
 
             # Create a new segment if there is a large gap or punctuation
-            if last_end is not None and start - last_end > 1.2:
+            if last_end is not None and start - last_end > SEGMENT_GAP_THRESHOLD_SECONDS:
                 finalize_segment()
                 segment_start = start
 
@@ -384,7 +541,7 @@ class ElevenLabsTranscriber(BaseTranscriber):
         audio_path: str,
         language: Optional[str] = None,
         progress_callback: Optional[Callable[[int, int], None]] = None,
-    ) -> List[Dict]:
+    ) -> List[Segment]:
         """Transcribe audio using ElevenLabs Scribe."""
         client = self._ensure_client()
         logger.info(f"Transcribing with ElevenLabs Scribe ({self.scribe_model_id})...")
@@ -406,7 +563,7 @@ class ElevenLabsTranscriber(BaseTranscriber):
             raise RuntimeError("ElevenLabs Scribe returned no transcript segments.")
 
         logger.info(f"Scribe transcription complete: {len(segments)} segments")
-        return [seg.as_dict() for seg in segments]
+        return segments
 
 
 # =============================================================================

@@ -585,7 +585,7 @@ def get_transcriber(
         Configured transcriber instance
 
     Environment Variables:
-        TRANSCRIPTION_ENGINE: 'whisper' or 'elevenlabs' (default: 'whisper')
+        TRANSCRIPTION_ENGINE: 'whisper', 'elevenlabs', or 'scribe' (default: 'whisper')
         WHISPER_MODEL: Model name for Whisper (default: 'large-v3')
         WHISPER_MODEL_DIR: Directory for model cache
         ELEVENLABS_API_KEY: API key for ElevenLabs
@@ -596,7 +596,7 @@ def get_transcriber(
 
     logger.info(f"Initializing transcription engine: {engine}")
 
-    if engine == "elevenlabs":
+    if engine in ("elevenlabs", "scribe"):
         api_key = kwargs.pop("api_key", None) or kwargs.pop("elevenlabs_api_key", None)
         scribe_model_id = kwargs.pop("scribe_model_id", None) or os.getenv("SCRIBE_MODEL_ID", "scribe_v2")
         return ElevenLabsTranscriber(

@@ -111,10 +111,10 @@ class PipelineConfig:
         errors = []
 
         # Validate transcription engine requirements
-        if self.transcription_engine == "elevenlabs":
+        if self.transcription_engine in ("elevenlabs", "scribe"):
             if not self.elevenlabs_api_key:
                 errors.append(
-                    "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs. "
+                    "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs/scribe. "
                     "Set the environment variable or use TRANSCRIPTION_ENGINE=whisper for local transcription."
                 )
 
@@ -224,10 +224,10 @@ def validate_config(config: dict, no_extract: bool = False) -> None:
     # Validate transcription engine requirements
     engine = config.get('transcription_engine', DEFAULT_TRANSCRIPTION_ENGINE)
 
-    if engine == 'elevenlabs':
+    if engine in ('elevenlabs', 'scribe'):
         if not config.get('elevenlabs_api_key'):
             errors.append(
-                "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs. "
+                "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs/scribe. "
                 "Set the environment variable or use TRANSCRIPTION_ENGINE=whisper for local transcription."
             )
 

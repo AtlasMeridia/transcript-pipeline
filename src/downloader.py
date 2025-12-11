@@ -3,7 +3,7 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 
 import yt_dlp
 
@@ -126,6 +126,88 @@ class VideoDownloader:
                 logger.info(f"Cleaned up audio file: {audio_path}")
         except Exception as e:
             logger.warning(f"Failed to cleanup audio file: {e}")
+
+    def get_captions(
+        self, url: str, language: str = 'en'
+    ) -> Tuple[Optional[str], Dict]:
+        """
+        Extract auto-generated captions from YouTube video.
+
+        Args:
+            url: YouTube video URL
+            language: Language code for captions (default: 'en')
+
+        Returns:
+            Tuple of (caption_file_path or None, metadata_dict)
+            Returns None for caption path if captions unavailable.
+
+        Raises:
+            Exception: If unable to extract video info
+        """
+        # First get metadata
+        logger.info("Fetching video information...")
+        metadata = self.get_video_info(url)
+
+        from .utils import sanitize_filename
+        output_filename = sanitize_filename(metadata['title'])
+
+        # Create captions subdirectory
+        captions_dir = self.output_dir / "captions"
+        captions_dir.mkdir(parents=True, exist_ok=True)
+
+        output_template = str(captions_dir / f"{output_filename}.%(ext)s")
+
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'skip_download': True,  # Don't download video/audio
+            'writeautomaticsub': True,  # Download auto-generated subtitles
+            'subtitleslangs': [language],
+            'subtitlesformat': 'vtt',  # VTT format has reliable timestamps
+            'outtmpl': output_template,
+        }
+
+        try:
+            logger.info(f"Checking for captions ({language})...")
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+
+                # Check if auto captions are available for requested language
+                auto_captions = info.get('automatic_captions', {})
+                if language not in auto_captions:
+                    logger.info(f"No auto-captions available for language: {language}")
+                    return None, metadata
+
+                # Download the captions
+                ydl.download([url])
+
+            # Find the downloaded caption file
+            caption_file = captions_dir / f"{output_filename}.{language}.vtt"
+
+            if caption_file.exists():
+                logger.info(f"Captions downloaded: {caption_file}")
+                return str(caption_file), metadata
+            else:
+                logger.warning("Caption file not found after download")
+                return None, metadata
+
+        except Exception as e:
+            logger.warning(f"Failed to get captions: {str(e)}")
+            return None, metadata
+
+    def cleanup_captions(self, caption_path: str) -> None:
+        """
+        Remove downloaded caption file.
+
+        Args:
+            caption_path: Path to caption file to delete
+        """
+        try:
+            if os.path.exists(caption_path):
+                os.remove(caption_path)
+                logger.info(f"Cleaned up caption file: {caption_path}")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup caption file: {e}")
 
 
 def get_downloader(output_dir: Optional[str] = None) -> VideoDownloader:

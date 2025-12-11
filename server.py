@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.utils import load_config, sanitize_filename, ensure_output_path, format_duration
 from src.downloader import VideoDownloader
-from src.transcriber import get_transcriber, BaseTranscriber
+from src.transcriber import get_transcriber, BaseTranscriber, CaptionTranscriber, CaptionsUnavailableError
 from src.extractor import TranscriptExtractor
 from src.services import create_transcript_markdown, create_summary_markdown
 
@@ -173,95 +173,262 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
     """
     Process a video asynchronously, updating job status as we go.
     Uses thread-safe job updates and broadcasts events to SSE clients.
+
+    Implements caption-first strategy: tries YouTube auto-captions first,
+    falls back to audio transcription if captions are unavailable.
     """
     config = load_config()
     output_dir = config.get('output_dir', './output')
 
     # Get transcription configuration
+    transcription_engine = config.get('transcription_engine', 'auto')
     elevenlabs_api_key = config.get('elevenlabs_api_key')
     scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
+    caption_language = config.get('caption_language', 'en')
+
+    loop = asyncio.get_running_loop()
+    audio_dir = os.path.join(output_dir, "audio")
+    downloader = VideoDownloader(output_dir=audio_dir)
+
+    audio_path = None  # Track if we downloaded audio (for cleanup)
+    segments = []
+    metadata = None
+    transcriber = None
 
     try:
         # ----------------------------------------------------------------
-        # Step 1: Download
+        # Step 1: Get transcript (captions-first if engine is 'auto')
         # ----------------------------------------------------------------
-        _update_and_broadcast(job_id,
-            status='downloading',
-            phase='download',
-            message='Fetching video metadata...',
-            progress=0
-        )
 
-        # Audio files go to audio subdirectory
-        audio_dir = os.path.join(output_dir, "audio")
-        downloader = VideoDownloader(output_dir=audio_dir)
+        if transcription_engine == 'auto':
+            # Try captions first (faster, no audio download needed)
+            _update_and_broadcast(job_id,
+                status='downloading',
+                phase='download',
+                message='Checking for YouTube captions...',
+                progress=5
+            )
 
-        # Run blocking download in thread pool
-        loop = asyncio.get_running_loop()
-        audio_path, metadata = await loop.run_in_executor(
-            None, downloader.download_audio, url
-        )
+            try:
+                # Get metadata first
+                metadata = await loop.run_in_executor(
+                    None, downloader.get_video_info, url
+                )
 
-        job_metadata = {
-            'title': metadata['title'],
-            'author': metadata['author'],
-            'date': metadata['upload_date'],
-            'duration': format_duration(metadata['duration']),
-            'url': metadata['url'],
-        }
-        _update_and_broadcast(job_id,
-            metadata=job_metadata,
-            message=f"Downloaded: {metadata['title']}",
-            progress=20
-        )
+                job_metadata = {
+                    'title': metadata['title'],
+                    'author': metadata['author'],
+                    'date': metadata['upload_date'],
+                    'duration': format_duration(metadata['duration']),
+                    'url': metadata['url'],
+                }
+                _update_and_broadcast(job_id,
+                    metadata=job_metadata,
+                    message=f"Found: {metadata['title']}",
+                    progress=10
+                )
 
-        # ----------------------------------------------------------------
-        # Step 2: Transcribe
-        # ----------------------------------------------------------------
-        transcription_engine = config.get('transcription_engine', 'whisper')
-        _update_and_broadcast(job_id,
-            status='transcribing',
-            phase='transcribing',
-            message='Initializing transcription...',
-            progress=25
-        )
+                _update_and_broadcast(job_id,
+                    status='transcribing',
+                    phase='transcribing',
+                    message='Extracting YouTube captions...',
+                    progress=15
+                )
 
-        transcriber = get_transcriber(
-            engine=transcription_engine,
-            api_key=elevenlabs_api_key,
-            scribe_model_id=scribe_model_id,
-            model_name=config.get('whisper_model'),
-            model_dir=config.get('whisper_model_dir'),
-        )
+                caption_transcriber = CaptionTranscriber(
+                    output_dir=output_dir,
+                    language=caption_language,
+                )
 
-        # Progress callback for granular transcription updates
-        def transcription_progress(current: int, total: int, message: str = None):
-            """Callback for transcription progress updates."""
-            if total > 0:
-                # Scale progress from 25-70 during transcription
-                pct = int(25 + (current / total) * 45)
-                msg = message or f'Transcribing with {transcriber.engine_name}... ({current}/{total})'
+                # Extract captions
+                segments = await loop.run_in_executor(
+                    None,
+                    lambda: caption_transcriber.transcribe(audio_path="", url=url)
+                )
+
+                transcriber = caption_transcriber
+                _update_and_broadcast(job_id,
+                    message=f'Captions extracted ({len(segments)} segments)',
+                    progress=70
+                )
+
+            except CaptionsUnavailableError as e:
+                # Fall back to audio transcription
+                _update_and_broadcast(job_id,
+                    status='downloading',
+                    phase='download',
+                    message='Captions unavailable, downloading audio...',
+                    progress=15
+                )
+
+                audio_path, metadata = await loop.run_in_executor(
+                    None, downloader.download_audio, url
+                )
+
+                job_metadata = {
+                    'title': metadata['title'],
+                    'author': metadata['author'],
+                    'date': metadata['upload_date'],
+                    'duration': format_duration(metadata['duration']),
+                    'url': metadata['url'],
+                }
+                _update_and_broadcast(job_id,
+                    metadata=job_metadata,
+                    message=f"Downloaded: {metadata['title']}",
+                    progress=20
+                )
+
+                # Use fallback engine
+                fallback_engine = config.get('caption_fallback_engine', 'whisper')
+                _update_and_broadcast(job_id,
+                    status='transcribing',
+                    phase='transcribing',
+                    message=f'Transcribing with {fallback_engine}...',
+                    progress=25
+                )
+
+                transcriber = get_transcriber(
+                    engine=fallback_engine,
+                    api_key=elevenlabs_api_key,
+                    scribe_model_id=scribe_model_id,
+                    model_name=config.get('whisper_model'),
+                    model_dir=config.get('whisper_model_dir'),
+                )
+
+                def transcription_progress(current: int, total: int, message: str = None):
+                    if total > 0:
+                        pct = int(25 + (current / total) * 45)
+                        msg = message or f'Transcribing... ({current}/{total})'
+                    else:
+                        pct = 30
+                        msg = message or f'Transcribing with {transcriber.engine_name}...'
+                    _update_and_broadcast(job_id, progress=pct, message=msg)
+
+                segments = await loop.run_in_executor(
+                    None,
+                    lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
+                )
+
+                _update_and_broadcast(job_id,
+                    message=f'Transcription complete ({len(segments)} segments)',
+                    progress=70
+                )
+
+        else:
+            # Explicit engine specified
+            _update_and_broadcast(job_id,
+                status='downloading',
+                phase='download',
+                message='Fetching video metadata...',
+                progress=0
+            )
+
+            if transcription_engine == 'captions':
+                # Captions-only mode
+                metadata = await loop.run_in_executor(
+                    None, downloader.get_video_info, url
+                )
+
+                job_metadata = {
+                    'title': metadata['title'],
+                    'author': metadata['author'],
+                    'date': metadata['upload_date'],
+                    'duration': format_duration(metadata['duration']),
+                    'url': metadata['url'],
+                }
+                _update_and_broadcast(job_id,
+                    metadata=job_metadata,
+                    message=f"Found: {metadata['title']}",
+                    progress=10
+                )
+
+                _update_and_broadcast(job_id,
+                    status='transcribing',
+                    phase='transcribing',
+                    message='Extracting YouTube captions...',
+                    progress=15
+                )
+
+                transcriber = get_transcriber(
+                    engine='captions',
+                    output_dir=output_dir,
+                    language=caption_language,
+                )
+
+                segments = await loop.run_in_executor(
+                    None,
+                    lambda: transcriber.transcribe(audio_path="", url=url)
+                )
+
+                _update_and_broadcast(job_id,
+                    message=f'Captions extracted ({len(segments)} segments)',
+                    progress=70
+                )
+
             else:
-                pct = 30
-                msg = message or f'Transcribing with {transcriber.engine_name}...'
-            _update_and_broadcast(job_id, progress=pct, message=msg)
+                # Audio-based transcription
+                audio_path, metadata = await loop.run_in_executor(
+                    None, downloader.download_audio, url
+                )
 
-        _update_and_broadcast(job_id,
-            message=f'Transcribing audio with {transcriber.engine_name}...',
-            progress=30
-        )
+                job_metadata = {
+                    'title': metadata['title'],
+                    'author': metadata['author'],
+                    'date': metadata['upload_date'],
+                    'duration': format_duration(metadata['duration']),
+                    'url': metadata['url'],
+                }
+                _update_and_broadcast(job_id,
+                    metadata=job_metadata,
+                    message=f"Downloaded: {metadata['title']}",
+                    progress=20
+                )
 
-        # Pass progress callback to transcriber
-        segments = await loop.run_in_executor(
-            None,
-            lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
-        )
+                _update_and_broadcast(job_id,
+                    status='transcribing',
+                    phase='transcribing',
+                    message='Initializing transcription...',
+                    progress=25
+                )
 
-        # Format transcript
+                transcriber = get_transcriber(
+                    engine=transcription_engine,
+                    api_key=elevenlabs_api_key,
+                    scribe_model_id=scribe_model_id,
+                    model_name=config.get('whisper_model'),
+                    model_dir=config.get('whisper_model_dir'),
+                )
+
+                def transcription_progress(current: int, total: int, message: str = None):
+                    if total > 0:
+                        pct = int(25 + (current / total) * 45)
+                        msg = message or f'Transcribing... ({current}/{total})'
+                    else:
+                        pct = 30
+                        msg = message or f'Transcribing with {transcriber.engine_name}...'
+                    _update_and_broadcast(job_id, progress=pct, message=msg)
+
+                _update_and_broadcast(job_id,
+                    message=f'Transcribing audio with {transcriber.engine_name}...',
+                    progress=30
+                )
+
+                segments = await loop.run_in_executor(
+                    None,
+                    lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
+                )
+
+                _update_and_broadcast(job_id,
+                    message=f'Transcription complete ({len(segments)} segments)',
+                    progress=70
+                )
+
+        # ----------------------------------------------------------------
+        # Step 2: Save transcript
+        # ----------------------------------------------------------------
         transcript_with_timestamps = transcriber.format_transcript(segments, include_timestamps=True)
         transcript_content = create_transcript_markdown(metadata, transcript_with_timestamps)
 
-        # Save transcript file (in transcripts subdirectory)
         date_prefix = datetime.now().strftime('%Y-%m-%d')
         filename_base = f"{date_prefix} {sanitize_filename(metadata['title'])}"
         transcript_output_dir = os.path.join(output_dir, "transcripts")
@@ -269,10 +436,8 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
         with open(transcript_path, 'w', encoding='utf-8') as f:
             f.write(transcript_content)
 
-        # Store path only, not content (memory efficiency)
         _update_and_broadcast(job_id,
             transcript_path=str(transcript_path),
-            message=f"Transcription complete ({len(segments)} segments)",
             progress=70
         )
 
@@ -287,7 +452,6 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
                 progress=75
             )
 
-            # Get API key
             if llm_type == "claude":
                 api_key = config.get('anthropic_api_key')
             else:
@@ -309,13 +473,11 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
                 summary_content = create_summary_markdown(metadata, summary)
 
-                # Save summary file (in summaries subdirectory)
                 summary_output_dir = os.path.join(output_dir, "summaries")
                 summary_path = ensure_output_path(summary_output_dir, f"{filename_base}-summary.md")
                 with open(summary_path, 'w', encoding='utf-8') as f:
                     f.write(summary_content)
 
-                # Store path only, not content (memory efficiency)
                 _update_and_broadcast(job_id,
                     summary_path=str(summary_path),
                     message='Extraction complete',
@@ -330,7 +492,8 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
         # ----------------------------------------------------------------
         # Cleanup and complete
         # ----------------------------------------------------------------
-        await loop.run_in_executor(None, downloader.cleanup_audio, audio_path)
+        if audio_path:
+            await loop.run_in_executor(None, downloader.cleanup_audio, audio_path)
 
         _update_and_broadcast(job_id,
             status='complete',

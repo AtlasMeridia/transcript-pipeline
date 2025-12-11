@@ -166,6 +166,20 @@
         if (!response.ok) throw new Error('Failed to get config');
         return response.json();
       },
+
+      async getTranscript(jobId) {
+        const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/transcript`);
+        if (!response.ok) throw new Error('Failed to fetch transcript');
+        const data = await response.json();
+        return data.content;
+      },
+
+      async getSummary(jobId) {
+        const response = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/summary`);
+        if (!response.ok) return null;  // Summary may not exist
+        const data = await response.json();
+        return data.content;
+      },
     };
 
     // ============================================================================
@@ -844,15 +858,24 @@
                 addLog(data.message, logType);
               }
             },
-            (data) => {
+            async (data) => {
               if (data.status === 'complete') {
-                setResults({
-                  title: data.metadata?.title || 'Untitled',
-                  transcript: data.transcript_content,
-                  summary: data.summary_content,
-                  metadata: data.metadata,
-                });
-                addLog('Pipeline complete', 'success');
+                addLog('Loading results...', 'info');
+                try {
+                  const [transcript, summary] = await Promise.all([
+                    api.getTranscript(job.job_id),
+                    api.getSummary(job.job_id).catch(() => null),
+                  ]);
+                  setResults({
+                    title: data.metadata?.title || 'Untitled',
+                    transcript,
+                    summary,
+                    metadata: data.metadata,
+                  });
+                  addLog('Pipeline complete', 'success');
+                } catch (fetchErr) {
+                  setError('Failed to load results: ' + fetchErr.message);
+                }
               } else if (data.status === 'error') {
                 setError(data.error);
               }

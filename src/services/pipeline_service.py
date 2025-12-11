@@ -15,7 +15,7 @@ from ..config import load_config, PipelineConfig
 from ..models import Segment, PipelineResult
 from ..utils import sanitize_filename, TimedOperation
 from ..downloader import VideoDownloader
-from ..transcriber import get_transcriber, BaseTranscriber
+from ..transcriber import get_transcriber, BaseTranscriber, CaptionTranscriber, CaptionsUnavailableError
 from ..extractor import TranscriptExtractor
 from .markdown_service import save_transcript_markdown, save_summary_markdown
 
@@ -89,38 +89,122 @@ def process_video(
     pipeline_start = time.perf_counter()
 
     try:
-        # ================================================================
-        # Step 1: Download audio
-        # ================================================================
-        update_status('download', 'downloading', 'Fetching video metadata...')
-
         audio_dir = os.path.join(output_dir, "audio")
         downloader = VideoDownloader(output_dir=audio_dir)
-
-        with TimedOperation("Audio download"):
-            audio_path, metadata = downloader.download_audio(url)
-
-        result['metadata'] = metadata
-        update_status('download', 'complete', f"Downloaded: {metadata['title']}")
+        audio_path = None  # Track if we downloaded audio (for cleanup)
+        segments: List[Segment] = []
+        metadata = None
+        transcriber = None
+        transcription_source = transcription_engine
 
         # ================================================================
-        # Step 2: Transcribe
+        # Step 1: Get transcript (captions-first if engine is 'auto')
         # ================================================================
-        update_status('transcribe', 'transcribing', f'Transcribing with {transcription_engine}...')
 
-        transcriber = get_transcriber(
-            engine=transcription_engine,
-            api_key=config.get('elevenlabs_api_key'),
-            scribe_model_id=config.get('scribe_model_id', 'scribe_v2'),
-            model_name=config.get('whisper_model', 'large-v3'),
-            model_dir=config.get('whisper_model_dir'),
-        )
+        if transcription_engine == 'auto':
+            # Try captions first (faster, no audio download needed)
+            update_status('download', 'downloading', 'Checking for YouTube captions...')
 
-        with TimedOperation(f"Transcription ({transcription_engine})"):
-            segments: List[Segment] = transcriber.transcribe(audio_path)
+            try:
+                caption_transcriber = CaptionTranscriber(
+                    output_dir=output_dir,
+                    language=config.get('caption_language', 'en'),
+                )
+
+                # Get metadata without downloading audio
+                metadata = downloader.get_video_info(url)
+                result['metadata'] = metadata
+
+                update_status('transcribe', 'transcribing', 'Extracting YouTube captions...')
+
+                with TimedOperation("Caption extraction"):
+                    segments = caption_transcriber.transcribe(
+                        audio_path="",  # Not used for captions
+                        url=url,
+                    )
+
+                transcriber = caption_transcriber
+                transcription_source = 'captions'
+                update_status('transcribe', 'complete', f'Captions extracted ({len(segments)} segments)')
+
+            except CaptionsUnavailableError as e:
+                logger.info(f"Captions unavailable: {e}, falling back to audio transcription")
+                update_status('download', 'downloading', 'Captions unavailable, downloading audio...')
+
+                # Fall back to audio download + transcription
+                with TimedOperation("Audio download"):
+                    audio_path, metadata = downloader.download_audio(url)
+
+                result['metadata'] = metadata
+                update_status('download', 'complete', f"Downloaded: {metadata['title']}")
+
+                # Use fallback engine (whisper by default)
+                fallback_engine = config.get('caption_fallback_engine', 'whisper')
+                update_status('transcribe', 'transcribing', f'Transcribing with {fallback_engine}...')
+
+                transcriber = get_transcriber(
+                    engine=fallback_engine,
+                    api_key=config.get('elevenlabs_api_key'),
+                    scribe_model_id=config.get('scribe_model_id', 'scribe_v2'),
+                    model_name=config.get('whisper_model', 'large-v3'),
+                    model_dir=config.get('whisper_model_dir'),
+                )
+
+                with TimedOperation(f"Transcription ({fallback_engine})"):
+                    segments = transcriber.transcribe(audio_path)
+
+                transcription_source = fallback_engine
+                update_status('transcribe', 'complete', f'Transcription complete ({len(segments)} segments)')
+
+        else:
+            # Explicit engine specified - use traditional flow
+            update_status('download', 'downloading', 'Fetching video metadata...')
+
+            if transcription_engine == 'captions':
+                # Captions-only mode (will fail if captions unavailable)
+                metadata = downloader.get_video_info(url)
+                result['metadata'] = metadata
+
+                update_status('transcribe', 'transcribing', 'Extracting YouTube captions...')
+
+                transcriber = get_transcriber(
+                    engine='captions',
+                    output_dir=output_dir,
+                    language=config.get('caption_language', 'en'),
+                )
+
+                with TimedOperation("Caption extraction"):
+                    segments = transcriber.transcribe(audio_path="", url=url)
+
+                update_status('transcribe', 'complete', f'Captions extracted ({len(segments)} segments)')
+            else:
+                # Audio-based transcription
+                with TimedOperation("Audio download"):
+                    audio_path, metadata = downloader.download_audio(url)
+
+                result['metadata'] = metadata
+                update_status('download', 'complete', f"Downloaded: {metadata['title']}")
+
+                update_status('transcribe', 'transcribing', f'Transcribing with {transcription_engine}...')
+
+                transcriber = get_transcriber(
+                    engine=transcription_engine,
+                    api_key=config.get('elevenlabs_api_key'),
+                    scribe_model_id=config.get('scribe_model_id', 'scribe_v2'),
+                    model_name=config.get('whisper_model', 'large-v3'),
+                    model_dir=config.get('whisper_model_dir'),
+                )
+
+                with TimedOperation(f"Transcription ({transcription_engine})"):
+                    segments = transcriber.transcribe(audio_path)
+
+                update_status('transcribe', 'complete', f'Transcription complete ({len(segments)} segments)')
+
         result['segments'] = segments
 
-        # Format and save transcript
+        # ================================================================
+        # Step 2: Save transcript
+        # ================================================================
         transcript_with_timestamps = transcriber.format_transcript(segments, include_timestamps=True)
         filename_base = sanitize_filename(metadata['title'])
 
@@ -133,8 +217,6 @@ def process_video(
 
         result['transcript_path'] = str(transcript_path)
         result['transcript_content'] = open(transcript_path, 'r', encoding='utf-8').read()
-
-        update_status('transcribe', 'complete', f'Transcription complete ({len(segments)} segments)')
 
         # ================================================================
         # Step 3: Extract (optional)
@@ -174,12 +256,13 @@ def process_video(
         # ================================================================
         # Cleanup
         # ================================================================
-        update_status('cleanup', 'cleaning', 'Cleaning up temporary files...')
-        downloader.cleanup_audio(audio_path)
+        if audio_path:
+            update_status('cleanup', 'cleaning', 'Cleaning up temporary files...')
+            downloader.cleanup_audio(audio_path)
 
         result['success'] = True
         total_time = time.perf_counter() - pipeline_start
-        logger.info(f"Pipeline completed in {total_time:.1f}s")
+        logger.info(f"Pipeline completed in {total_time:.1f}s (source: {transcription_source})")
         update_status('complete', 'complete', f'Processing complete! (total: {total_time:.1f}s)')
 
         return result

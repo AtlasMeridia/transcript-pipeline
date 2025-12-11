@@ -567,6 +567,114 @@ class ElevenLabsTranscriber(BaseTranscriber):
 
 
 # =============================================================================
+# Caption Transcriber (YouTube Auto-Captions)
+# =============================================================================
+
+class CaptionsUnavailableError(Exception):
+    """Raised when YouTube captions are not available for a video."""
+    pass
+
+
+class CaptionTranscriber(BaseTranscriber):
+    """Transcribes using YouTube auto-generated captions.
+
+    This transcriber extracts captions directly from YouTube instead of
+    processing audio. It's much faster than audio-based transcription
+    but depends on YouTube having auto-captions available.
+    """
+
+    def __init__(
+        self,
+        output_dir: str = "./output",
+        language: str = "en",
+    ):
+        """
+        Initialize the caption transcriber.
+
+        Args:
+            output_dir: Directory for temporary caption files
+            language: Language code for captions (default: 'en')
+        """
+        self.output_dir = output_dir
+        self.language = language
+
+    @property
+    def engine_name(self) -> str:
+        return "captions"
+
+    def transcribe(
+        self,
+        audio_path: str,
+        language: Optional[str] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        **kwargs,
+    ) -> List[Segment]:
+        """
+        Extract captions from YouTube video.
+
+        Note: This transcriber requires 'url' in kwargs since it doesn't
+        process audio files directly. The audio_path parameter is ignored.
+
+        Args:
+            audio_path: Ignored (kept for interface compatibility)
+            language: Override language code
+            progress_callback: Optional callback(current, total)
+            **kwargs: Must include 'url' for the YouTube video
+
+        Returns:
+            List of Segment objects from captions
+
+        Raises:
+            CaptionsUnavailableError: If captions are not available
+            ValueError: If 'url' is not provided in kwargs
+        """
+        url = kwargs.get('url')
+        if not url:
+            raise ValueError("CaptionTranscriber requires 'url' parameter in kwargs")
+
+        lang = language or self.language
+
+        # Import here to avoid circular imports
+        from .downloader import VideoDownloader
+        from .caption_parser import parse_vtt
+
+        logger.info(f"Attempting to fetch YouTube captions for: {url}")
+
+        if progress_callback:
+            progress_callback(0, 2)
+
+        # Download captions
+        downloader = VideoDownloader(output_dir=self.output_dir)
+        caption_path, metadata = downloader.get_captions(url, language=lang)
+
+        if caption_path is None:
+            raise CaptionsUnavailableError(
+                f"No auto-captions available for language '{lang}'"
+            )
+
+        if progress_callback:
+            progress_callback(1, 2)
+
+        try:
+            # Parse VTT file into segments
+            segments = parse_vtt(caption_path)
+
+            if not segments:
+                raise CaptionsUnavailableError("Captions file was empty or unparseable")
+
+            logger.info(f"Caption transcription complete: {len(segments)} segments")
+
+            if progress_callback:
+                progress_callback(2, 2)
+
+            return segments
+
+        finally:
+            # Clean up caption file
+            downloader.cleanup_captions(caption_path)
+
+
+# =============================================================================
 # Factory Function
 # =============================================================================
 
@@ -578,32 +686,43 @@ def get_transcriber(
     Factory function to get the appropriate transcriber based on configuration.
 
     Args:
-        engine: Override engine selection ('whisper' or 'elevenlabs')
+        engine: Override engine selection ('whisper', 'elevenlabs', 'captions', or 'auto')
         **kwargs: Additional arguments passed to the transcriber constructor
+            - output_dir: Directory for output files (used by captions)
+            - language: Language code for captions (default: 'en')
 
     Returns:
         Configured transcriber instance
 
     Environment Variables:
-        TRANSCRIPTION_ENGINE: 'whisper', 'elevenlabs', or 'scribe' (default: 'whisper')
+        TRANSCRIPTION_ENGINE: 'whisper', 'elevenlabs', 'scribe', 'captions', or 'auto'
+                              (default: 'auto' - tries captions first, falls back to whisper)
         WHISPER_MODEL: Model name for Whisper (default: 'large-v3')
         WHISPER_MODEL_DIR: Directory for model cache
         ELEVENLABS_API_KEY: API key for ElevenLabs
         SCRIBE_MODEL_ID: Model ID for ElevenLabs Scribe
+        CAPTION_LANGUAGE: Language for YouTube captions (default: 'en')
     """
     if engine is None:
-        engine = os.getenv("TRANSCRIPTION_ENGINE", "whisper").lower()
+        engine = os.getenv("TRANSCRIPTION_ENGINE", "auto").lower()
 
     logger.info(f"Initializing transcription engine: {engine}")
 
-    if engine in ("elevenlabs", "scribe"):
+    if engine == "captions":
+        output_dir = kwargs.pop("output_dir", None) or os.getenv("OUTPUT_DIR", "./output")
+        language = kwargs.pop("language", None) or os.getenv("CAPTION_LANGUAGE", "en")
+        return CaptionTranscriber(
+            output_dir=output_dir,
+            language=language,
+        )
+    elif engine in ("elevenlabs", "scribe"):
         api_key = kwargs.pop("api_key", None) or kwargs.pop("elevenlabs_api_key", None)
         scribe_model_id = kwargs.pop("scribe_model_id", None) or os.getenv("SCRIBE_MODEL_ID", "scribe_v2")
         return ElevenLabsTranscriber(
             api_key=api_key,
             scribe_model_id=scribe_model_id,
         )
-    else:  # Default to whisper
+    else:  # Default to whisper (also handles 'auto' fallback)
         model_name = kwargs.pop("model_name", None) or os.getenv("WHISPER_MODEL", "large-v3")
         model_dir = kwargs.pop("model_dir", None) or os.getenv("WHISPER_MODEL_DIR")
         return WhisperTranscriber(

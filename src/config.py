@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Transcription
-DEFAULT_TRANSCRIPTION_ENGINE = "whisper"
+DEFAULT_TRANSCRIPTION_ENGINE = "auto"  # Try captions first, fall back to whisper
 DEFAULT_WHISPER_MODEL = "large-v3"
 DEFAULT_SCRIBE_MODEL = "scribe_v2"
 SEGMENT_GAP_THRESHOLD_SECONDS = 1.2  # Gap threshold for word-to-segment grouping
+
+# YouTube Captions
+DEFAULT_CAPTION_LANGUAGE = "en"
+DEFAULT_CAPTION_FALLBACK_ENGINE = "whisper"  # Engine to use when captions unavailable
 
 # Chunked transcription for long audio (memory safety)
 CHUNK_DURATION_SECONDS = 30 * 60  # 30 minutes per chunk
@@ -84,6 +88,10 @@ class PipelineConfig:
     elevenlabs_api_key: Optional[str] = None
     scribe_model_id: str = DEFAULT_SCRIBE_MODEL
 
+    # Caption settings
+    caption_language: str = DEFAULT_CAPTION_LANGUAGE
+    caption_fallback_engine: str = DEFAULT_CAPTION_FALLBACK_ENGINE
+
     # LLM settings
     default_llm: str = DEFAULT_LLM
     anthropic_api_key: Optional[str] = None
@@ -142,6 +150,8 @@ class PipelineConfig:
             'whisper_model_dir': self.whisper_model_dir,
             'elevenlabs_api_key': self.elevenlabs_api_key,
             'scribe_model_id': self.scribe_model_id,
+            'caption_language': self.caption_language,
+            'caption_fallback_engine': self.caption_fallback_engine,
             'default_llm': self.default_llm,
             'anthropic_api_key': self.anthropic_api_key,
             'openai_api_key': self.openai_api_key,
@@ -173,6 +183,10 @@ def load_pipeline_config() -> PipelineConfig:
         whisper_model_dir=os.getenv('WHISPER_MODEL_DIR'),
         elevenlabs_api_key=os.getenv('ELEVENLABS_API_KEY'),
         scribe_model_id=os.getenv('SCRIBE_MODEL_ID', DEFAULT_SCRIBE_MODEL),
+
+        # Caption settings
+        caption_language=os.getenv('CAPTION_LANGUAGE', DEFAULT_CAPTION_LANGUAGE),
+        caption_fallback_engine=os.getenv('CAPTION_FALLBACK_ENGINE', DEFAULT_CAPTION_FALLBACK_ENGINE),
 
         # LLM
         default_llm=os.getenv('DEFAULT_LLM', DEFAULT_LLM),

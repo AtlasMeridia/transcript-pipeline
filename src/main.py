@@ -55,16 +55,29 @@ Examples:
         help='Skip extraction, only transcribe'
     )
 
+    parser.add_argument(
+        '--transcription-engine',
+        default=None,
+        choices=['auto', 'captions', 'whisper', 'elevenlabs', 'scribe'],
+        help='Transcription source: auto (captions first, fallback to whisper), '
+             'captions (YouTube only), whisper (local), elevenlabs/scribe (cloud). '
+             '(default: from .env or "auto")'
+    )
+
     args = parser.parse_args()
 
     # Load config and apply defaults
     config = load_config()
     llm_type = args.llm or config.get('default_llm', 'claude')
     output_dir = args.output_dir or config.get('output_dir', './output')
-    transcription_engine = config.get('transcription_engine', 'whisper')
+    transcription_engine = args.transcription_engine or config.get('transcription_engine', 'auto')
 
     # Display transcription engine info
-    if transcription_engine == 'elevenlabs':
+    if transcription_engine == 'auto':
+        engine_display = "auto (captions first, fallback to whisper)"
+    elif transcription_engine == 'captions':
+        engine_display = "YouTube captions"
+    elif transcription_engine in ('elevenlabs', 'scribe'):
         scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
         engine_display = f"elevenlabs (Scribe {scribe_model_id})"
     else:

@@ -6,41 +6,74 @@
   <title>Transcript Pipeline</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      /* Core palette - inspired by reference site */
-      --bg-primary: #0d0d0b;
-      --bg-secondary: #141412;
-      --bg-elevated: #1a1a17;
-      --bg-card: rgba(20, 20, 18, 0.8);
+      /* ═══════════════════════════════════════════════════════════════
+         ATLAS MERIDIA DESIGN TOKENS v3.1
+         ═══════════════════════════════════════════════════════════════ */
 
-      /* Text colors */
-      --text-primary: #e8e4dc;
-      --text-secondary: #9a958a;
-      --text-muted: #5a5750;
+      /* Navy Scale — desaturated, slightly warm */
+      --navy-950: #08090c;
+      --navy-900: #0e1318;
+      --navy-800: #161c24;
+      --navy-700: #1e2630;
+      --navy-600: #2a3440;
+      --navy-500: #3d4754;
 
-      /* Accent - warm gold */
-      --accent-gold: #c9a227;
-      --accent-gold-dim: rgba(201, 162, 39, 0.6);
-      --accent-gold-subtle: rgba(201, 162, 39, 0.15);
-      --accent-gold-glow: rgba(201, 162, 39, 0.08);
+      /* Cream Scale — for light mode and accents */
+      --cream-50: #f8f6f1;
+      --cream-100: #f3f0ea;
 
-      /* Status colors */
-      --success: #4a9c6d;
-      --success-subtle: rgba(74, 156, 109, 0.15);
-      --error: #c45c5c;
-      --error-subtle: rgba(196, 92, 92, 0.15);
+      /* Background tokens */
+      --bg-primary: var(--navy-900);
+      --bg-secondary: var(--navy-800);
+      --bg-elevated: var(--navy-700);
+      --bg-card: rgba(22, 28, 36, 0.8);
+      --bg-deep: var(--navy-950);
+
+      /* Text colors — refined cream tones */
+      --text-primary: #d5cab8;
+      --text-secondary: #bfb4a4;
+      --text-muted: #9a8f80;
+
+      /* Amber-Gold Accent Scale */
+      --accent-light: #ddb878;
+      --accent: #c9924a;
+      --accent-dark: #a87a3a;
+      --accent-deep: #8a6530;
+      --accent-gold: var(--accent);
+      --accent-gold-dim: rgba(201, 146, 74, 0.6);
+      --accent-gold-subtle: rgba(201, 146, 74, 0.15);
+      --accent-gold-glow: rgba(201, 146, 74, 0.08);
+
+      /* Status colors — softened */
+      --success: #6a9a70;
+      --success-subtle: rgba(106, 154, 112, 0.15);
+      --error: #b05454;
+      --error-subtle: rgba(176, 84, 84, 0.15);
       --info: #5c8ac4;
 
-      /* Borders */
-      --border-subtle: rgba(232, 228, 220, 0.08);
-      --border-light: rgba(232, 228, 220, 0.12);
+      /* Borders — using navy scale */
+      --border-subtle: rgba(42, 52, 64, 0.5);
+      --border-light: var(--navy-600);
+      --border-color: var(--navy-600);
 
       /* Typography */
       --font-serif: 'Cormorant Garamond', Georgia, serif;
       --font-sans: 'DM Sans', -apple-system, sans-serif;
-      --font-mono: 'JetBrains Mono', monospace;
+      --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+
+      /* Motion tokens */
+      --transition-fast: 150ms ease;
+      --transition-base: 300ms ease;
+      --transition-slow: 600ms cubic-bezier(0.16, 1, 0.3, 1);
+      --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+      /* Border radius */
+      --border-radius-sm: 4px;
+      --border-radius: 6px;
+      --border-radius-lg: 12px;
 
       /* Spacing */
       --space-xs: 4px;
@@ -73,8 +106,19 @@
     }
 
     ::selection {
-      background: var(--accent-gold);
-      color: var(--bg-primary);
+      background: rgba(201, 146, 74, 0.3);
+      color: inherit;
+    }
+
+    /* Noise texture overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: 0.03;
+      pointer-events: none;
+      z-index: 9999;
     }
 
     ::placeholder {
@@ -199,7 +243,7 @@
         position: 'sticky',
         top: 0,
         zIndex: 100,
-        background: 'rgba(13, 13, 11, 0.9)',
+        background: 'rgba(14, 19, 24, 0.9)',
         backdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border-subtle)',
       },
@@ -263,7 +307,7 @@
         color: 'var(--text-primary)',
       },
       heroTitleAccent: {
-        background: 'linear-gradient(135deg, var(--accent-gold) 0%, #e8c547 100%)',
+        background: 'linear-gradient(135deg, var(--accent-light) 0%, var(--accent) 100%)',
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent',
         backgroundClip: 'text',
@@ -306,40 +350,44 @@
       input: {
         flex: 1,
         background: 'var(--bg-secondary)',
-        border: '1px solid var(--border-light)',
-        borderRadius: '4px',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-lg)',
         fontFamily: 'var(--font-sans)',
         fontSize: '1rem',
         color: 'var(--text-primary)',
         outline: 'none',
-        transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+        transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
       },
       inputFocused: {
-        borderColor: 'var(--accent-gold-dim)',
-        boxShadow: '0 0 0 3px var(--accent-gold-glow)',
+        borderColor: 'var(--accent)',
+        boxShadow: '0 0 0 3px rgba(201, 146, 74, 0.15)',
       },
       submitButton: {
-        background: 'var(--accent-gold)',
+        background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%)',
         border: 'none',
-        borderRadius: '4px',
+        borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-xl)',
         fontFamily: 'var(--font-sans)',
         fontSize: '0.875rem',
         fontWeight: 500,
-        color: 'var(--bg-primary)',
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
+        color: 'var(--cream-50)',
         cursor: 'pointer',
-        transition: 'all 0.2s ease',
+        transition: 'all var(--transition-base)',
         whiteSpace: 'nowrap',
+        boxShadow: '0 4px 20px rgba(201, 146, 74, 0.25)',
       },
       submitButtonDisabled: {
         background: 'var(--bg-elevated)',
         color: 'var(--text-muted)',
         cursor: 'not-allowed',
+        boxShadow: 'none',
       },
       submitButtonHover: {
-        background: '#d4ad2e',
-        transform: 'translateY(-1px)',
+        transform: 'translateY(-2px)',
+        boxShadow: '0 6px 30px rgba(201, 146, 74, 0.35)',
       },
 
       // Progress section
@@ -370,10 +418,10 @@
         alignItems: 'center',
         gap: 'var(--space-xs)',
         color: 'var(--text-muted)',
-        transition: 'color 0.3s ease',
+        transition: 'color var(--transition-base)',
       },
       phaseActive: {
-        color: 'var(--accent-gold)',
+        color: 'var(--accent)',
       },
       phaseComplete: {
         color: 'var(--success)',
@@ -388,7 +436,7 @@
       // Waveform
       waveformContainer: {
         background: 'var(--bg-secondary)',
-        borderRadius: '4px',
+        borderRadius: 'var(--border-radius-sm)',
         border: '1px solid var(--border-subtle)',
         padding: 'var(--space-md)',
         overflow: 'hidden',
@@ -400,7 +448,7 @@
       },
       logContainer: {
         background: 'var(--bg-secondary)',
-        borderRadius: '4px',
+        borderRadius: 'var(--border-radius-sm)',
         border: '1px solid var(--border-subtle)',
         padding: 'var(--space-md)',
         maxHeight: '200px',
@@ -433,8 +481,8 @@
       // Error display
       errorBox: {
         background: 'var(--error-subtle)',
-        border: '1px solid rgba(196, 92, 92, 0.3)',
-        borderRadius: '4px',
+        border: '1px solid rgba(176, 84, 84, 0.3)',
+        borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-lg)',
         marginBottom: 'var(--space-2xl)',
         fontFamily: 'var(--font-mono)',
@@ -448,7 +496,7 @@
       },
       resultCard: {
         background: 'var(--bg-card)',
-        borderRadius: '6px',
+        borderRadius: 'var(--border-radius)',
         border: '1px solid var(--border-subtle)',
         overflow: 'hidden',
       },
@@ -485,12 +533,12 @@
         border: 'none',
         borderBottom: '2px solid transparent',
         cursor: 'pointer',
-        transition: 'all 0.2s ease',
+        transition: 'all var(--transition-fast)',
         marginBottom: '-1px',
       },
       tabActive: {
         color: 'var(--text-primary)',
-        borderBottomColor: 'var(--accent-gold)',
+        borderBottomColor: 'var(--accent)',
       },
 
       // Controls row
@@ -507,20 +555,24 @@
         fontSize: '0.75rem',
         padding: 'var(--space-sm) var(--space-md)',
         background: 'transparent',
-        border: '1px solid var(--border-light)',
-        borderRadius: '4px',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--border-radius-sm)',
         color: 'var(--text-secondary)',
         cursor: 'pointer',
-        transition: 'all 0.2s ease',
+        transition: 'all var(--transition-fast)',
         textDecoration: 'none',
         display: 'inline-flex',
         alignItems: 'center',
         gap: 'var(--space-xs)',
       },
+      controlButtonHover: {
+        borderColor: 'var(--accent)',
+        color: 'var(--accent)',
+      },
       controlButtonActive: {
         background: 'var(--accent-gold-subtle)',
-        borderColor: 'var(--accent-gold-dim)',
-        color: 'var(--accent-gold)',
+        borderColor: 'var(--accent)',
+        color: 'var(--accent)',
       },
       downloadButtons: {
         display: 'flex',
@@ -618,13 +670,13 @@
         font-size: 0.875em;
         background: var(--bg-elevated);
         padding: 2px 6px;
-        border-radius: 3px;
-        color: var(--accent-gold);
+        border-radius: var(--border-radius-sm);
+        color: var(--accent-light);
       }
       .markdown-preview pre {
-        background: var(--bg-primary);
-        border: 1px solid var(--border-subtle);
-        border-radius: 4px;
+        background: var(--bg-deep);
+        border: 1px solid var(--navy-700);
+        border-radius: var(--border-radius);
         padding: var(--space-md);
         overflow-x: auto;
         margin-bottom: var(--space-md);
@@ -642,21 +694,26 @@
       .markdown-preview li {
         margin-bottom: var(--space-xs);
       }
+      .markdown-preview li::marker {
+        color: var(--accent);
+      }
       .markdown-preview blockquote {
         font-family: var(--font-serif);
         font-style: italic;
-        border-left: 3px solid var(--accent-gold-dim);
+        border-left: 3px solid var(--accent);
         padding-left: var(--space-md);
         margin: var(--space-md) 0;
         color: var(--text-secondary);
       }
       .markdown-preview a {
-        color: var(--accent-gold);
+        color: var(--accent);
         text-decoration: underline;
-        text-underline-offset: 2px;
+        text-decoration-color: rgba(201, 146, 74, 0.4);
+        text-underline-offset: 3px;
+        transition: text-decoration-color var(--transition-fast);
       }
       .markdown-preview a:hover {
-        color: var(--text-primary);
+        text-decoration-color: var(--accent);
       }
       .markdown-preview hr {
         border: none;
@@ -691,14 +748,14 @@
         const draw = () => {
           timeRef.current += 0.015;
 
-          // Clear with slight fade for trail effect
-          ctx.fillStyle = 'rgba(20, 20, 18, 0.1)';
+          // Clear with slight fade for trail effect (using navy-800)
+          ctx.fillStyle = 'rgba(22, 28, 36, 0.1)';
           ctx.fillRect(0, 0, width, height);
 
           if (isActive) {
-            // Main waveform
-            const color = phase === 'transcribing' ? '#c9a227' :
-                         phase === 'extracting' ? '#4a9c6d' : '#c9a227';
+            // Main waveform - using ATLAS Meridia amber-gold and success colors
+            const color = phase === 'transcribing' ? '#c9924a' :
+                         phase === 'extracting' ? '#6a9a70' : '#c9924a';
 
             ctx.strokeStyle = color;
             ctx.lineWidth = 1.5;
@@ -723,8 +780,8 @@
             ctx.lineWidth = 6;
             ctx.stroke();
           } else {
-            // Idle state - subtle flat line with minimal noise
-            ctx.strokeStyle = 'rgba(201, 162, 39, 0.2)';
+            // Idle state - subtle flat line with minimal noise (amber-gold)
+            ctx.strokeStyle = 'rgba(201, 146, 74, 0.2)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             for (let x = 0; x < width; x++) {

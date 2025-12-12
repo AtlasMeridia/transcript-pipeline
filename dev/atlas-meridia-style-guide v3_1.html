@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATLAS Meridia — Style Guide v3.1</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,500;1,8..60,300;1,8..60,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Noto+Serif+TC:wght@300;400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        /* ═══════════════════════════════════════════════════════════════
+           ATLAS MERIDIA DESIGN TOKENS v3
+           Last updated: December 2025
+           ═══════════════════════════════════════════════════════════════ */
+        
+        :root {
+            /* ─────────────────────────────────────────────────────────────
+               COLOR SYSTEM
+               ───────────────────────────────────────────────────────────── */
+            
+            /* Navy Scale — desaturated, slightly warm */
+            --navy-950: #08090c;
+            --navy-900: #0e1318;
+            --navy-800: #161c24;
+            --navy-700: #1e2630;
+            --navy-600: #2a3440;
+            --navy-500: #3d4754;
+            --navy-400: #5c6672;
+            --navy-300: #7d8690;
+            
+            /* Warm Cream Scale — muted, paper-like */
+            --cream-50: #f8f6f1;
+            --cream-100: #f3f0ea;
+            --cream-200: #eae6de;
+            --cream-300: #dfd9ce;
+            --cream-400: #d0c8bb;
+            --cream-500: #b8b0a2;
+            
+            /* Amber-Gold Accent Scale */
+            --accent-light: #ddb878;
+            --accent: #c9924a;
+            --accent-dark: #a87a3a;
+            --accent-deep: #8a6530;
+            
+            /* Semantic Colors */
+            --success: #6a9a70;
+            --error: #b05454;
+            --warning: var(--accent);
+            
+            /* ─────────────────────────────────────────────────────────────
+               TYPOGRAPHY
+               ───────────────────────────────────────────────────────────── */
+            
+            --font-display: 'Cormorant Garamond', Georgia, serif;
+            --font-body: 'Source Serif 4', Georgia, serif;
+            --font-ui: 'DM Sans', system-ui, sans-serif;
+            --font-mono: 'IBM Plex Mono', monospace;
+            
+            /* Traditional Chinese Font Families */
+            --font-body-zh: 'Noto Serif TC', 'Songti TC', 'PMingLiU', serif;
+            --font-ui-zh: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+            
+            /* Type Scale */
+            --text-xs: 0.75rem;      /* 12px */
+            --text-sm: 0.875rem;     /* 14px */
+            --text-base: 1.125rem;   /* 18px */
+            --text-body: 1.375rem;   /* 22px — primary body */
+            --text-lg: 1.5rem;       /* 24px */
+            --text-xl: 1.75rem;      /* 28px */
+            --text-2xl: 2.25rem;     /* 36px */
+            --text-3xl: 3rem;        /* 48px */
+            --text-4xl: 4rem;        /* 64px */
+            --text-5xl: 5.5rem;      /* 88px */
+            --text-6xl: 7rem;        /* 112px */
+            
+            /* Line Heights */
+            --leading-tight: 1.05;
+            --leading-snug: 1.25;
+            --leading-normal: 1.5;
+            --leading-relaxed: 1.65;
+            
+            /* ─────────────────────────────────────────────────────────────
+               SPACING
+               ───────────────────────────────────────────────────────────── */
+            
+            --space-1: 0.25rem;   /* 4px */
+            --space-2: 0.5rem;    /* 8px */
+            --space-3: 0.75rem;   /* 12px */
+            --space-4: 1rem;      /* 16px */
+            --space-5: 1.5rem;    /* 24px */
+            --space-6: 2rem;      /* 32px */
+            --space-8: 3rem;      /* 48px */
+            --space-10: 4rem;     /* 64px */
+            --space-12: 6rem;     /* 96px */
+            --space-16: 8rem;     /* 128px */
+            --space-20: 10rem;    /* 160px */
+            
+            /* ─────────────────────────────────────────────────────────────
+               LAYOUT
+               ───────────────────────────────────────────────────────────── */
+            
+            --width-prose: 38rem;    /* ~608px — article body */
+            --width-wide: 52rem;     /* ~832px — wide content */
+            --width-full: 80rem;     /* ~1280px — max container */
+            
+            /* ─────────────────────────────────────────────────────────────
+               MOTION
+               ───────────────────────────────────────────────────────────── */
+            
+            --transition-fast: 150ms ease;
+            --transition-base: 300ms ease;
+            --transition-slow: 600ms cubic-bezier(0.16, 1, 0.3, 1);
+            --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+            
+            /* ─────────────────────────────────────────────────────────────
+               LIGHT MODE THEME
+               ───────────────────────────────────────────────────────────── */
+            
+            --bg-primary: var(--cream-100);
+            --bg-deep: var(--cream-50);
+            --bg-elevated: var(--cream-50);
+            --text-primary: var(--navy-700);
+            --text-secondary: var(--navy-600);
+            --text-muted: var(--navy-400);
+            --border-color: var(--cream-400);
+            
+            --body-weight: 400;
+            --body-tracking: 0;
+            --accent-text: #a87a3a;  /* Darker for small text contrast */
+        }
+        
+        /* ─────────────────────────────────────────────────────────────
+           DARK MODE THEME
+           ───────────────────────────────────────────────────────────── */
+        
+        [data-theme="dark"] {
+            --bg-primary: var(--navy-900);
+            --bg-deep: var(--navy-950);
+            --bg-elevated: var(--navy-800);
+            --text-primary: #d5cab8;
+            --text-secondary: #bfb4a4;
+            --text-muted: #9a8f80;
+            --border-color: var(--navy-600);
+            
+            --body-weight: 300;
+            --body-tracking: 0.01em;
+            --accent-text: var(--accent);
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           BASE STYLES
+           ═══════════════════════════════════════════════════════════════ */
+        
+        *, *::before, *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        html {
+            font-size: 16px;
+            scroll-behavior: smooth;
+        }
+        
+        body {
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            font-weight: var(--body-weight);
+            letter-spacing: var(--body-tracking);
+            line-height: var(--leading-relaxed);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background var(--transition-base), color var(--transition-base);
+        }
+        
+        /* Texture overlay */
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity: 0.03;
+            pointer-events: none;
+            z-index: 9999;
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           GUIDE LAYOUT
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .guide-header {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border-color);
+            padding: var(--space-4) var(--space-6);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .guide-logo {
+            font-family: var(--font-display);
+            font-size: var(--text-xl);
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            color: var(--text-primary);
+        }
+        
+        .guide-logo em {
+            font-weight: 300;
+            font-style: italic;
+            letter-spacing: 0.02em;
+        }
+        
+        .guide-version {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--text-muted);
+            margin-left: var(--space-3);
+        }
+        
+        .theme-toggle {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            padding: var(--space-2) var(--space-4);
+            background: var(--bg-deep);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all var(--transition-base);
+        }
+        
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            color: var(--text-primary);
+        }
+        
+        .guide-nav {
+            background: var(--bg-deep);
+            border-bottom: 1px solid var(--border-color);
+            padding: var(--space-3) var(--space-6);
+            display: flex;
+            gap: var(--space-6);
+            overflow-x: auto;
+        }
+        
+        .guide-nav a {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            color: var(--text-muted);
+            text-decoration: none;
+            white-space: nowrap;
+            transition: color var(--transition-fast);
+        }
+        
+        .guide-nav a:hover {
+            color: var(--text-primary);
+        }
+        
+        .guide-content {
+            max-width: var(--width-wide);
+            margin: 0 auto;
+            padding: var(--space-10) var(--space-6) var(--space-16);
+        }
+        
+        /* Section styling */
+        .section {
+            margin-bottom: var(--space-16);
+        }
+        
+        .section-title {
+            font-family: var(--font-display);
+            font-size: var(--text-3xl);
+            font-weight: 300;
+            margin-bottom: var(--space-3);
+            color: var(--text-primary);
+        }
+        
+        .section-title em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        
+        .section-desc {
+            font-size: var(--text-base);
+            color: var(--text-secondary);
+            margin-bottom: var(--space-8);
+            max-width: 60ch;
+        }
+        
+        .subsection {
+            margin-bottom: var(--space-10);
+        }
+        
+        .subsection-title {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent-text);
+            margin-bottom: var(--space-4);
+        }
+        
+        .subsection-note {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            color: var(--text-muted);
+            margin-bottom: var(--space-5);
+            font-style: italic;
+        }
+        
+        /* Code blocks */
+        pre {
+            background: var(--navy-950);
+            border-radius: 6px;
+            padding: var(--space-5);
+            margin: var(--space-5) 0;
+            overflow-x: auto;
+            border: 1px solid var(--navy-800);
+        }
+        
+        pre code {
+            font-family: var(--font-mono);
+            font-size: var(--text-sm);
+            line-height: 1.7;
+            color: #b8b0a2;
+        }
+        
+        code {
+            font-family: var(--font-mono);
+            font-size: 0.88em;
+            background: var(--bg-deep);
+            padding: 0.15em 0.4em;
+            border-radius: 3px;
+            color: var(--accent-text);
+        }
+        
+        [data-theme="dark"] code:not(pre code) {
+            color: var(--accent-light);
+        }
+        
+        /* Tables */
+        .token-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: var(--space-5) 0;
+            font-size: var(--text-base);
+        }
+        
+        .token-table th,
+        .token-table td {
+            text-align: left;
+            padding: var(--space-3) var(--space-4);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .token-table th {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        
+        .token-table td {
+            font-family: var(--font-mono);
+            font-size: var(--text-sm);
+        }
+        
+        .token-table .value {
+            color: var(--text-secondary);
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           COLOR SWATCHES
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: var(--space-4);
+            margin: var(--space-5) 0;
+        }
+        
+        .color-swatch {
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+        
+        .swatch-color {
+            height: 80px;
+        }
+        
+        .swatch-info {
+            padding: var(--space-3);
+            background: var(--bg-elevated);
+        }
+        
+        .swatch-name {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: var(--space-1);
+        }
+        
+        .swatch-value {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-muted);
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           TYPOGRAPHY SPECIMENS
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .type-specimen {
+            margin: var(--space-6) 0;
+            padding: var(--space-6);
+            background: var(--bg-deep);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .type-specimen-label {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--text-muted);
+            margin-bottom: var(--space-3);
+        }
+        
+        .type-display {
+            font-family: var(--font-display);
+            font-size: var(--text-4xl);
+            font-weight: 300;
+            line-height: var(--leading-tight);
+            color: var(--text-primary);
+        }
+        
+        .type-display em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        
+        .type-body-specimen {
+            font-family: var(--font-body);
+            font-size: var(--text-body);
+            font-weight: var(--body-weight);
+            letter-spacing: var(--body-tracking);
+            line-height: var(--leading-relaxed);
+            max-width: 60ch;
+        }
+        
+        .type-ui {
+            font-family: var(--font-ui);
+            font-size: var(--text-base);
+        }
+        
+        .font-stack {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--space-4);
+            margin: var(--space-5) 0;
+        }
+        
+        .font-card {
+            padding: var(--space-5);
+            background: var(--bg-deep);
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .font-card-name {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent-text);
+            margin-bottom: var(--space-2);
+        }
+        
+        .font-card-sample {
+            font-size: var(--text-2xl);
+            color: var(--text-primary);
+            margin-bottom: var(--space-3);
+        }
+        
+        .font-card-sample.display { font-family: var(--font-display); font-weight: 300; }
+        .font-card-sample.body { font-family: var(--font-body); }
+        .font-card-sample.ui { font-family: var(--font-ui); }
+        .font-card-sample.mono { font-family: var(--font-mono); }
+        .font-card-sample.zh { font-family: var(--font-body-zh); }
+        
+        .font-card-meta {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--text-muted);
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           COMPONENT EXAMPLES
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .component-grid {
+            display: grid;
+            gap: var(--space-6);
+            margin: var(--space-5) 0;
+        }
+        
+        .component-card {
+            padding: var(--space-6);
+            background: var(--bg-deep);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .component-label {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            color: var(--text-muted);
+            margin-bottom: var(--space-4);
+        }
+        
+        /* Buttons */
+        .btn-primary {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: var(--space-4) var(--space-6);
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            color: var(--cream-50);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all var(--transition-base);
+            box-shadow: 0 4px 20px rgba(201, 146, 74, 0.25);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 30px rgba(201, 146, 74, 0.35);
+        }
+        
+        .btn-secondary {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            padding: var(--space-3) var(--space-5);
+            background: transparent;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all var(--transition-base);
+        }
+        
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        
+        .btn-group {
+            display: flex;
+            gap: var(--space-4);
+            flex-wrap: wrap;
+        }
+        
+        /* Links */
+        .link-example {
+            color: inherit;
+            text-decoration-line: underline;
+            text-decoration-color: var(--accent);
+            text-decoration-thickness: 1px;
+            text-underline-offset: 3px;
+            transition: text-decoration-color var(--transition-fast);
+        }
+        
+        .link-example:hover {
+            text-decoration-color: var(--accent-dark);
+        }
+        
+        /* Tags */
+        .tag {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            font-weight: 500;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent-text);
+            padding: var(--space-2) var(--space-4);
+            border: 1px solid var(--accent);
+            border-radius: 2px;
+            display: inline-block;
+        }
+        
+        /* Callout */
+        .callout-example {
+            background: linear-gradient(135deg, rgba(201, 146, 74, 0.08) 0%, rgba(138, 101, 48, 0.04) 100%);
+            border: 1px solid rgba(201, 146, 74, 0.2);
+            border-radius: 8px;
+            padding: var(--space-6);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .callout-example::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(to bottom, var(--accent), var(--accent-dark));
+        }
+        
+        .callout-example-label {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            font-weight: 500;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--accent-text);
+            margin-bottom: var(--space-3);
+        }
+        
+        .callout-example p {
+            font-size: var(--text-base);
+            margin: 0;
+        }
+        
+        /* Blockquote / Pullquote */
+        .pullquote-example {
+            margin: var(--space-6) 0;
+            padding-left: var(--space-6);
+            border-left: 3px solid var(--accent);
+        }
+        
+        .pullquote-example p {
+            font-family: var(--font-display);
+            font-size: var(--text-2xl);
+            font-weight: 300;
+            font-style: italic;
+            line-height: var(--leading-snug);
+            color: var(--text-primary);
+            margin-bottom: 0;
+        }
+        
+        .pullquote-example cite {
+            display: block;
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            font-style: normal;
+            color: var(--text-muted);
+            margin-top: var(--space-3);
+        }
+        
+        /* Divider */
+        .divider-example {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-4);
+            margin: var(--space-8) 0;
+            color: var(--accent);
+        }
+        
+        .divider-example::before,
+        .divider-example::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-color);
+        }
+        
+        .divider-example svg {
+            width: 24px;
+            height: 24px;
+            opacity: 0.7;
+        }
+        
+        /* Input */
+        .input-example {
+            font-family: var(--font-body);
+            font-size: var(--text-base);
+            padding: var(--space-4);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            color: var(--text-primary);
+            width: 100%;
+            max-width: 320px;
+            transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+        }
+        
+        .input-example::placeholder {
+            color: var(--text-muted);
+        }
+        
+        .input-example:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(201, 146, 74, 0.15);
+        }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           IMAGE TREATMENT EXAMPLES
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .image-treatments {
+            display: grid;
+            gap: var(--space-6);
+        }
+        
+        .image-card {
+            background: var(--bg-deep);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+        
+        .image-card-preview {
+            padding: var(--space-5);
+            background: var(--bg-primary);
+        }
+        
+        .image-card-info {
+            padding: var(--space-4) var(--space-5);
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .image-card-name {
+            font-family: var(--font-ui);
+            font-size: var(--text-sm);
+            font-weight: 500;
+            color: var(--text-primary);
+            margin-bottom: var(--space-1);
+        }
+        
+        .image-card-desc {
+            font-family: var(--font-ui);
+            font-size: var(--text-xs);
+            color: var(--text-muted);
+        }
+        
+        .img-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, var(--navy-800) 0%, var(--navy-700) 50%, var(--navy-800) 100%);
+            border-radius: 6px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .img-placeholder::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: 
+                radial-gradient(ellipse at 30% 40%, rgba(201, 146, 74, 0.15) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 60%, rgba(138, 101, 48, 0.1) 0%, transparent 40%);
+        }
+        
+        .img-placeholder-label {
+            font-family: var(--font-mono);
+            font-size: var(--text-xs);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: #bfb4a4;
+            opacity: 0.5;
+            z-index: 1;
+        }
+        
+        .aspect-16-9 { aspect-ratio: 16/9; }
+        .aspect-3-2 { aspect-ratio: 3/2; }
+        .aspect-4-3 { aspect-ratio: 4/3; }
+        .aspect-21-9 { aspect-ratio: 21/9; }
+        
+        /* ═══════════════════════════════════════════════════════════════
+           UTILITIES
+           ═══════════════════════════════════════════════════════════════ */
+        
+        .note-box {
+            background: var(--bg-deep);
+            border-left: 3px solid var(--accent);
+            padding: var(--space-4) var(--space-5);
+            margin: var(--space-5) 0;
+            border-radius: 0 6px 6px 0;
+        }
+        
+        .note-box p {
+            font-size: var(--text-base);
+            margin: 0;
+        }
+        
+        .two-col {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--space-6);
+        }
+        
+        @media (max-width: 768px) {
+            .two-col {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="guide-header">
+        <div>
+            <span class="guide-logo">ATLAS <em>Meridia</em></span>
+            <span class="guide-version">Style Guide v3.1</span>
+        </div>
+        <button class="theme-toggle" id="themeToggle">Toggle Theme</button>
+    </header>
+    
+    <!-- Navigation -->
+    <nav class="guide-nav">
+        <a href="#brand">Brand</a>
+        <a href="#colors">Colors</a>
+        <a href="#typography">Typography</a>
+        <a href="#spacing">Spacing</a>
+        <a href="#components">Components</a>
+        <a href="#images">Images</a>
+        <a href="#ghost">Ghost Integration</a>
+    </nav>
+    
+    <!-- Content -->
+    <main class="guide-content">
+        
+        <!-- BRAND -->
+        <section id="brand" class="section">
+            <h2 class="section-title">Brand <em>Essence</em></h2>
+            <p class="section-desc">ATLAS Meridia is an experimental laboratory for AI tools, knowledge management systems, and creative technology solutions. The visual language balances intellectual authority with warmth and approachability.</p>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Voice</h3>
+                <p class="subsection-note">Thoughtful, precise, curious. We explain complex ideas clearly without condescension. We're excited about discovery but measured in claims.</p>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Visual Character</h3>
+                <p class="subsection-note">Editorial sophistication meets digital craft. Classic typography signals intellectual seriousness. Warm gold accents add life without flash. Generous whitespace lets ideas breathe.</p>
+            </div>
+        </section>
+        
+        <!-- COLORS -->
+        <section id="colors" class="section">
+            <h2 class="section-title">Color <em>System</em></h2>
+            <p class="section-desc">A desaturated navy foundation with warm cream surfaces and amber-gold accents. The palette is deliberately muted — sophisticated without being cold.</p>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Navy Scale</h3>
+                <p class="subsection-note">Primary backgrounds in dark mode. Desaturated with slight warmth to avoid feeling clinical.</p>
+                <div class="color-grid">
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #08090c;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 950</div><div class="swatch-value">#08090c</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #0e1318;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 900</div><div class="swatch-value">#0e1318</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #161c24;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 800</div><div class="swatch-value">#161c24</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #1e2630;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 700</div><div class="swatch-value">#1e2630</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #2a3440;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 600</div><div class="swatch-value">#2a3440</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #3d4754;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Navy 500</div><div class="swatch-value">#3d4754</div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Cream Scale</h3>
+                <p class="subsection-note">Primary backgrounds in light mode. Warm paper tones, not stark white.</p>
+                <div class="color-grid">
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #f8f6f1;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 50</div><div class="swatch-value">#f8f6f1</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #f3f0ea;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 100</div><div class="swatch-value">#f3f0ea</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #eae6de;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 200</div><div class="swatch-value">#eae6de</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #dfd9ce;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 300</div><div class="swatch-value">#dfd9ce</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #d0c8bb;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 400</div><div class="swatch-value">#d0c8bb</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #b8b0a2;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Cream 500</div><div class="swatch-value">#b8b0a2</div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Accent — Amber Gold</h3>
+                <p class="subsection-note">The signature accent. Use for interactive elements, emphasis, and brand moments. In light mode, use <code>--accent-dark</code> (#a87a3a) for small text to ensure contrast.</p>
+                <div class="color-grid">
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #ddb878;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Accent Light</div><div class="swatch-value">#ddb878</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #c9924a;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Accent</div><div class="swatch-value">#c9924a</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #a87a3a;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Accent Dark</div><div class="swatch-value">#a87a3a</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #8a6530;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Accent Deep</div><div class="swatch-value">#8a6530</div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Dark Mode Text</h3>
+                <p class="subsection-note">Custom text colors for dark mode — softer than pure cream to reduce contrast and eye strain.</p>
+                <div class="color-grid">
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #d5cab8;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Text Primary</div><div class="swatch-value">#d5cab8</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #bfb4a4;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Text Secondary</div><div class="swatch-value">#bfb4a4</div></div>
+                    </div>
+                    <div class="color-swatch">
+                        <div class="swatch-color" style="background: #9a8f80;"></div>
+                        <div class="swatch-info"><div class="swatch-name">Text Muted</div><div class="swatch-value">#9a8f80</div></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <!-- TYPOGRAPHY -->
+        <section id="typography" class="section">
+            <h2 class="section-title">Typography</h2>
+            <p class="section-desc">Four typefaces, each with a specific role. The combination of classical serifs and clean sans creates intellectual warmth.</p>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Font Stack</h3>
+                <div class="font-stack">
+                    <div class="font-card">
+                        <div class="font-card-name">Display</div>
+                        <div class="font-card-sample display">Cormorant Garamond</div>
+                        <div class="font-card-meta">Headlines, hero text, pullquotes</div>
+                    </div>
+                    <div class="font-card">
+                        <div class="font-card-name">Body</div>
+                        <div class="font-card-sample body">Source Serif 4</div>
+                        <div class="font-card-meta">Long-form articles, paragraphs</div>
+                    </div>
+                    <div class="font-card">
+                        <div class="font-card-name">UI</div>
+                        <div class="font-card-sample ui">DM Sans</div>
+                        <div class="font-card-meta">Labels, buttons, navigation</div>
+                    </div>
+                    <div class="font-card">
+                        <div class="font-card-name">Mono</div>
+                        <div class="font-card-sample mono">IBM Plex Mono</div>
+                        <div class="font-card-meta">Code, technical values</div>
+                    </div>
+                    <div class="font-card">
+                        <div class="font-card-name">Traditional Chinese</div>
+                        <div class="font-card-sample zh">思源宋體</div>
+                        <div class="font-card-meta">Noto Serif TC · Chinese content</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Display Type</h3>
+                <p class="subsection-note">Cormorant Garamond at weight 300, with italics at weight 400. Use for headlines, hero sections, and pullquotes.</p>
+                <div class="type-specimen">
+                    <div class="type-specimen-label">--font-display · weight 300/400 italic · --leading-tight</div>
+                    <p class="type-display">The Verification Problem<br>in the Age of <em>Infinite</em></p>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Body Type</h3>
+                <p class="subsection-note">Source Serif 4 at 22px (--text-body) with 1.65 line height. Variable font with optical sizing. In dark mode, use weight 300 with +0.01em letter-spacing.</p>
+                <div class="type-specimen">
+                    <div class="type-specimen-label">--font-body · --text-body (22px) · --leading-relaxed (1.65)</div>
+                    <p class="type-body-specimen">We're entering an era where the cost of generating plausible content—text, images, video, code—approaches zero. The economic and cognitive barriers that once separated "real" from "fabricated" are collapsing. This isn't a future scenario; it's the present condition.</p>
+                </div>
+                
+                <div class="note-box">
+                    <p><strong>Dark mode adjustment:</strong> Set <code>font-weight: 300</code> and <code>letter-spacing: 0.01em</code> to compensate for light text on dark background appearing heavier.</p>
+                </div>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Type Scale</h3>
+                <table class="token-table">
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Size</th>
+                            <th>Use</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>--text-xs</td><td class="value">0.75rem (12px)</td><td>Labels, captions</td></tr>
+                        <tr><td>--text-sm</td><td class="value">0.875rem (14px)</td><td>Secondary text, buttons</td></tr>
+                        <tr><td>--text-base</td><td class="value">1.125rem (18px)</td><td>UI text, callouts</td></tr>
+                        <tr><td>--text-body</td><td class="value">1.375rem (22px)</td><td>Article body</td></tr>
+                        <tr><td>--text-lg</td><td class="value">1.5rem (24px)</td><td>Lead paragraphs</td></tr>
+                        <tr><td>--text-xl</td><td class="value">1.75rem (28px)</td><td>Section headers</td></tr>
+                        <tr><td>--text-2xl</td><td class="value">2.25rem (36px)</td><td>Pullquotes</td></tr>
+                        <tr><td>--text-3xl</td><td class="value">3rem (48px)</td><td>Page titles</td></tr>
+                        <tr><td>--text-4xl</td><td class="value">4rem (64px)</td><td>Hero headlines</td></tr>
+                        <tr><td>--text-5xl</td><td class="value">5.5rem (88px)</td><td>Large hero</td></tr>
+                        <tr><td>--text-6xl</td><td class="value">7rem (112px)</td><td>Maximum impact</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Traditional Mandarin — Noto Serif TC</h3>
+                <p class="subsection-note">Noto Serif TC (思源宋體) pairs with Source Serif 4's warmth and bookish character. Use for Traditional Chinese content.</p>
+                
+                <div class="two-col" style="margin: var(--space-5) 0;">
+                    <div class="component-card">
+                        <div class="component-label">Display · 標題</div>
+                        <p style="font-family: var(--font-body-zh); font-size: var(--text-2xl); font-weight: 400; line-height: 1.6;">
+                            最有趣的發現往往發生在學科交匯之處
+                        </p>
+                    </div>
+                    <div class="component-card">
+                        <div class="component-label">English Equivalent</div>
+                        <p style="font-family: var(--font-body); font-size: var(--text-2xl); font-weight: 300; line-height: 1.6;">
+                            The most interesting discoveries happen where disciplines converge
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="type-specimen">
+                    <div class="type-specimen-label">Body Copy · 正文 · --font-body-zh</div>
+                    <p style="font-family: var(--font-body-zh); font-size: var(--text-body); font-weight: 400; line-height: 2; max-width: var(--width-prose);">
+                        我們相信，明天重要的工具今天很少顯而易見。它們源於實驗，源於追隨好奇心的線索，沒有預設的目的地。這就是實驗室的工作：在必要之前探索可能性。每一段都應該吸引讀者更深入地閱讀。
+                    </p>
+                </div>
+                
+                <div class="type-specimen">
+                    <div class="type-specimen-label">Mixed Content · 中英混排</div>
+                    <p style="font-family: var(--font-body); font-size: var(--text-body); font-weight: var(--body-weight); line-height: 1.8; max-width: var(--width-prose);">
+                        <span style="font-family: var(--font-body-zh);">ATLAS Meridia 是一個探索人工智慧與創意技術交匯的實驗室。我們在</span> San Francisco <span style="font-family: var(--font-body-zh);">運營，專注於建構驗證系統、知識管理工具，以及推動思想邊界的解決方案。</span>
+                    </p>
+                </div>
+                
+                <div class="component-card" style="margin-top: var(--space-5);">
+                    <div class="component-label">Weight Range · 字重</div>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-4); margin-top: var(--space-3);">
+                        <div>
+                            <p style="font-family: var(--font-body-zh); font-size: var(--text-xl); font-weight: 300;">實驗室</p>
+                            <p style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);">300 Light</p>
+                        </div>
+                        <div>
+                            <p style="font-family: var(--font-body-zh); font-size: var(--text-xl); font-weight: 400;">實驗室</p>
+                            <p style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);">400 Regular</p>
+                        </div>
+                        <div>
+                            <p style="font-family: var(--font-body-zh); font-size: var(--text-xl); font-weight: 500;">實驗室</p>
+                            <p style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);">500 Medium</p>
+                        </div>
+                        <div>
+                            <p style="font-family: var(--font-body-zh); font-size: var(--text-xl); font-weight: 600;">實驗室</p>
+                            <p style="font-family: var(--font-mono); font-size: var(--text-xs); color: var(--text-muted);">600 SemiBold</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="note-box" style="margin-top: var(--space-5);">
+                    <p><strong>Implementation:</strong> CJK fonts are large (~4MB). Load only needed weights (300, 400, 500) to minimize file size. For mixed EN/ZH content, let the browser fallback naturally using the combined font stack.</p>
+                </div>
+                
+                <pre style="margin-top: var(--space-5);"><code>/* CSS Variables */
+--font-body-zh: 'Noto Serif TC', 'Songti TC', 'PMingLiU', serif;
+--font-ui-zh: 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+
+/* Auto-detect Chinese content */
+.post-content:lang(zh-Hant),
+.post-content:lang(zh-TW) {
+  font-family: var(--font-body-zh);
+  font-size: calc(var(--text-body) * 1.05);
+  line-height: 2;
+}
+
+/* For tagged Chinese posts in Ghost */
+.tag-chinese .post-content,
+.tag-中文 .post-content {
+  font-family: var(--font-body-zh);
+}</code></pre>
+            </div>
+        </section>
+        
+        <!-- SPACING -->
+        <section id="spacing" class="section">
+            <h2 class="section-title">Spacing</h2>
+            <p class="section-desc">Consistent spacing tokens based on a 4px base unit. Use these variables throughout for predictable rhythm.</p>
+            
+            <table class="token-table">
+                <thead>
+                    <tr>
+                        <th>Token</th>
+                        <th>Value</th>
+                        <th>Pixels</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td>--space-1</td><td class="value">0.25rem</td><td>4px</td></tr>
+                    <tr><td>--space-2</td><td class="value">0.5rem</td><td>8px</td></tr>
+                    <tr><td>--space-3</td><td class="value">0.75rem</td><td>12px</td></tr>
+                    <tr><td>--space-4</td><td class="value">1rem</td><td>16px</td></tr>
+                    <tr><td>--space-5</td><td class="value">1.5rem</td><td>24px</td></tr>
+                    <tr><td>--space-6</td><td class="value">2rem</td><td>32px</td></tr>
+                    <tr><td>--space-8</td><td class="value">3rem</td><td>48px</td></tr>
+                    <tr><td>--space-10</td><td class="value">4rem</td><td>64px</td></tr>
+                    <tr><td>--space-12</td><td class="value">6rem</td><td>96px</td></tr>
+                    <tr><td>--space-16</td><td class="value">8rem</td><td>128px</td></tr>
+                </tbody>
+            </table>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Layout Widths</h3>
+                <table class="token-table">
+                    <thead>
+                        <tr>
+                            <th>Token</th>
+                            <th>Value</th>
+                            <th>Use</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>--width-prose</td><td class="value">38rem (~608px)</td><td>Article body column</td></tr>
+                        <tr><td>--width-wide</td><td class="value">52rem (~832px)</td><td>Wide content, images</td></tr>
+                        <tr><td>--width-full</td><td class="value">80rem (~1280px)</td><td>Max container width</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        
+        <!-- COMPONENTS -->
+        <section id="components" class="section">
+            <h2 class="section-title">Components</h2>
+            <p class="section-desc">Reusable UI elements styled consistently across the system.</p>
+            
+            <div class="component-grid">
+                <div class="component-card">
+                    <div class="component-label">Buttons</div>
+                    <div class="btn-group">
+                        <button class="btn-primary">Primary Action</button>
+                        <button class="btn-secondary">Secondary</button>
+                    </div>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Links</div>
+                    <p style="font-size: var(--text-body);">Body text with a <a href="#" class="link-example">styled link</a> that uses an accent underline and subtle hover state.</p>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Tags / Labels</div>
+                    <span class="tag">Experiment</span>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Input</div>
+                    <input type="email" class="input-example" placeholder="your@email.com">
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Callout Box</div>
+                    <div class="callout-example">
+                        <div class="callout-example-label">Note</div>
+                        <p>Use callouts to highlight important information, key takeaways, or experimental notes that deserve extra attention.</p>
+                    </div>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Pullquote / Blockquote</div>
+                    <div class="pullquote-example">
+                        <p>The question isn't whether AI-generated content is "good enough." It's whether we can distinguish what's real.</p>
+                        <cite>— Internal observation</cite>
+                    </div>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Divider</div>
+                    <div class="divider-example">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+                        </svg>
+                    </div>
+                    <p class="subsection-note" style="margin-top: var(--space-4);">Use between major sections. The compass icon in accent color at 0.7 opacity.</p>
+                </div>
+                
+                <div class="component-card">
+                    <div class="component-label">Code Block</div>
+                    <pre><code>const verify = async (claim) => {
+  const methodology = await extractMethodology(claim);
+  return auditMethodology(methodology);
+};</code></pre>
+                </div>
+            </div>
+        </section>
+        
+        <!-- IMAGES -->
+        <section id="images" class="section">
+            <h2 class="section-title">Image <em>Treatments</em></h2>
+            <p class="section-desc">Five image treatments for different editorial contexts. All use 6px border-radius except full-bleed.</p>
+            
+            <div class="image-treatments">
+                <div class="image-card">
+                    <div class="image-card-preview">
+                        <div class="img-placeholder aspect-4-3" style="max-width: 400px;">
+                            <span class="img-placeholder-label">Inline · 4:3</span>
+                        </div>
+                    </div>
+                    <div class="image-card-info">
+                        <div class="image-card-name">Inline</div>
+                        <div class="image-card-desc">Stays within prose column. Use for supporting visuals, screenshots, diagrams.</div>
+                    </div>
+                </div>
+                
+                <div class="image-card">
+                    <div class="image-card-preview">
+                        <div class="img-placeholder aspect-16-9">
+                            <span class="img-placeholder-label">Wide · 16:9</span>
+                        </div>
+                    </div>
+                    <div class="image-card-info">
+                        <div class="image-card-name">Wide</div>
+                        <div class="image-card-desc">Breaks out ±3rem from prose column. Use for feature images, hero visuals.</div>
+                    </div>
+                </div>
+                
+                <div class="image-card">
+                    <div class="image-card-preview">
+                        <div class="img-placeholder aspect-21-9" style="border-radius: 0;">
+                            <span class="img-placeholder-label">Full Bleed · 21:9</span>
+                        </div>
+                    </div>
+                    <div class="image-card-info">
+                        <div class="image-card-name">Full Bleed</div>
+                        <div class="image-card-desc">Edge to edge, no border-radius. Maximum drama for cinematic moments.</div>
+                    </div>
+                </div>
+                
+                <div class="image-card">
+                    <div class="image-card-preview">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+                            <div class="img-placeholder aspect-4-3"><span class="img-placeholder-label">Left</span></div>
+                            <div class="img-placeholder aspect-4-3"><span class="img-placeholder-label">Right</span></div>
+                        </div>
+                    </div>
+                    <div class="image-card-info">
+                        <div class="image-card-name">Paired</div>
+                        <div class="image-card-desc">Two images side-by-side. Use for comparisons, before/after, related visuals.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="note-box" style="margin-top: var(--space-6);">
+                <p><strong>Dark mode:</strong> Apply <code>filter: brightness(0.92) contrast(1.02)</code> to photos to reduce glare on dark backgrounds.</p>
+            </div>
+        </section>
+        
+        <!-- GHOST -->
+        <section id="ghost" class="section">
+            <h2 class="section-title">Ghost <em>Integration</em></h2>
+            <p class="section-desc">Notes for implementing this design system in Ghost themes and blog posts.</p>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Post Content Styling</h3>
+                <p class="subsection-note">Ghost's content API outputs semantic HTML. Target these elements:</p>
+                <pre><code>.post-content p {
+    font-family: var(--font-body);
+    font-size: var(--text-body);
+    font-weight: var(--body-weight);
+    letter-spacing: var(--body-tracking);
+    line-height: var(--leading-relaxed);
+    margin-bottom: var(--space-5);
+}
+
+.post-content h2 {
+    font-family: var(--font-display);
+    font-size: var(--text-3xl);
+    font-weight: 300;
+    margin-top: var(--space-12);
+    margin-bottom: var(--space-5);
+}
+
+.post-content a {
+    text-decoration-color: var(--accent);
+    text-underline-offset: 3px;
+}
+
+.post-content blockquote {
+    /* Use pullquote styling */
+    border-left: 3px solid var(--accent);
+    padding-left: var(--space-6);
+}
+
+.post-content pre {
+    background: var(--navy-950);
+    border: 1px solid var(--navy-800);
+}</code></pre>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Card Markup</h3>
+                <p class="subsection-note">Ghost cards (callout, bookmark, etc.) can be styled with custom classes:</p>
+                <pre><code>/* Ghost callout card */
+.kg-callout-card {
+    background: linear-gradient(135deg, 
+        rgba(201, 146, 74, 0.08) 0%, 
+        rgba(138, 101, 48, 0.04) 100%);
+    border: 1px solid rgba(201, 146, 74, 0.2);
+    border-left: 4px solid var(--accent);
+}
+
+/* Ghost image card widths */
+.kg-width-wide { 
+    width: calc(100% + 6rem);
+    margin-left: -3rem; 
+}
+
+.kg-width-full { 
+    width: 100vw;
+    margin-left: calc(-50vw + 50%); 
+}</code></pre>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Theme Variables</h3>
+                <p class="subsection-note">Include the full token set in your theme's CSS. Ghost supports <code>:root</code> variables. Dark mode can be toggled via:</p>
+                <pre><code>&lt;html data-theme="dark"&gt;
+// or
+@media (prefers-color-scheme: dark) {
+    :root { /* dark mode tokens */ }
+}</code></pre>
+            </div>
+            
+            <div class="subsection">
+                <h3 class="subsection-title">Reading Progress Bar</h3>
+                <p class="subsection-note">Optional enhancement. 3px height, gradient fill:</p>
+                <pre><code>.progress-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 3px;
+    background: linear-gradient(90deg, 
+        var(--accent) 0%, 
+        var(--accent-light) 100%);
+    z-index: 1000;
+}</code></pre>
+            </div>
+        </section>
+        
+    </main>
+    
+    <script>
+        const toggle = document.getElementById('themeToggle');
+        const html = document.documentElement;
+        
+        const saved = localStorage.getItem('atlas-theme') || 'dark';
+        html.setAttribute('data-theme', saved);
+        
+        toggle.addEventListener('click', () => {
+            const current = html.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-theme', next);
+            localStorage.setItem('atlas-theme', next);
+        });
+    </script>
+</body>
+</html>

@@ -32,10 +32,10 @@
       --bg-card: rgba(22, 28, 36, 0.8);
       --bg-deep: var(--navy-950);
 
-      /* Text colors — refined cream tones */
-      --text-primary: #d5cab8;
-      --text-secondary: #bfb4a4;
-      --text-muted: #9a8f80;
+      /* Text colors — refined cream tones (WCAG AA compliant) */
+      --text-primary: #d5cab8;    /* 11.5:1 contrast on navy-900 */
+      --text-secondary: #bfb4a4;  /* 9.1:1 contrast on navy-900 */
+      --text-muted: #a89d8e;      /* 6.5:1 contrast on navy-900, 5.3:1 on navy-700 */
 
       /* Amber-Gold Accent Scale */
       --accent-light: #ddb878;
@@ -578,6 +578,22 @@
         display: 'flex',
         gap: 'var(--space-sm)',
       },
+      resetButton: {
+        background: 'transparent',
+        border: '1px solid var(--border-color)',
+        borderRadius: 'var(--border-radius-sm)',
+        padding: 'var(--space-sm) var(--space-lg)',
+        fontFamily: 'var(--font-sans)',
+        fontSize: '0.875rem',
+        color: 'var(--text-secondary)',
+        cursor: 'pointer',
+        transition: 'all var(--transition-fast)',
+        marginTop: 'var(--space-md)',
+      },
+      resetButtonHover: {
+        borderColor: 'var(--accent)',
+        color: 'var(--accent)',
+      },
 
       // Content area
       contentArea: {
@@ -818,6 +834,13 @@
     const PhaseIndicator = ({ currentPhase, phases }) => {
       const phaseIndex = phases.indexOf(currentPhase);
 
+      const friendlyPhaseNames = {
+        'download': 'Download',
+        'transcribing': 'Transcribe',
+        'extracting': 'Summarize',
+        'complete': 'Complete',
+      };
+
       return (
         <div style={styles.phaseIndicator}>
           {phases.map((phase, i) => (
@@ -830,7 +853,7 @@
               }}
             >
               <span style={styles.phaseDot} />
-              <span style={{ textTransform: 'capitalize' }}>{phase}</span>
+              <span>{friendlyPhaseNames[phase] || phase}</span>
             </div>
           ))}
         </div>
@@ -872,6 +895,7 @@
       const [activeTab, setActiveTab] = useState('transcript');
       const [inputFocused, setInputFocused] = useState(false);
       const [buttonHovered, setButtonHovered] = useState(false);
+      const [hoveredControl, setHoveredControl] = useState(null);
 
       const phases = ['download', 'transcribing', 'extracting', 'complete'];
 
@@ -899,11 +923,11 @@
         setError(null);
 
         try {
-          addLog('Initializing pipeline...', 'dim');
+          addLog('Getting ready...', 'dim');
 
           const job = await api.startProcessing(url);
           setCurrentJobId(job.job_id);
-          addLog(`Job started: ${job.job_id.slice(0, 8)}...`, 'info');
+          addLog('Starting transcription', 'info');
 
           api.streamJobStatus(
             job.job_id,
@@ -917,7 +941,7 @@
             },
             async (data) => {
               if (data.status === 'complete') {
-                addLog('Loading results...', 'info');
+                addLog('Preparing your transcript', 'info');
                 try {
                   const [transcript, summary] = await Promise.all([
                     api.getTranscript(job.job_id),
@@ -929,7 +953,7 @@
                     summary,
                     metadata: data.metadata,
                   });
-                  addLog('Pipeline complete', 'success');
+                  addLog('Done! Your transcript is ready', 'success');
                 } catch (fetchErr) {
                   setError('Failed to load results: ' + fetchErr.message);
                 }
@@ -957,6 +981,16 @@
         if (h > 0) return `${h}h ${m}m`;
         if (m > 0) return `${m}m ${s}s`;
         return `${s}s`;
+      };
+
+      const resetPipeline = () => {
+        setUrl('');
+        setLogs([]);
+        setResults(null);
+        setError(null);
+        setCurrentPhase(null);
+        setCurrentJobId(null);
+        setHoveredControl(null);
       };
 
       return (
@@ -1105,9 +1139,12 @@
                   <div style={styles.controlsRow}>
                     <button
                       onClick={() => setPreviewMode(!previewMode)}
+                      onMouseEnter={() => setHoveredControl('preview')}
+                      onMouseLeave={() => setHoveredControl(null)}
                       style={{
                         ...styles.controlButton,
                         ...(previewMode ? styles.controlButtonActive : {}),
+                        ...(!previewMode && hoveredControl === 'preview' ? styles.controlButtonHover : {}),
                       }}
                     >
                       {previewMode ? '◉ Preview' : '○ Raw'}
@@ -1115,14 +1152,24 @@
                     <div style={styles.downloadButtons}>
                       <a
                         href={api.getDownloadUrl(currentJobId, 'transcript')}
-                        style={styles.controlButton}
+                        onMouseEnter={() => setHoveredControl('download-transcript')}
+                        onMouseLeave={() => setHoveredControl(null)}
+                        style={{
+                          ...styles.controlButton,
+                          ...(hoveredControl === 'download-transcript' ? styles.controlButtonHover : {}),
+                        }}
                       >
                         ↓ Transcript
                       </a>
                       {results.summary && (
                         <a
                           href={api.getDownloadUrl(currentJobId, 'summary')}
-                          style={styles.controlButton}
+                          onMouseEnter={() => setHoveredControl('download-summary')}
+                          onMouseLeave={() => setHoveredControl(null)}
+                          style={{
+                            ...styles.controlButton,
+                            ...(hoveredControl === 'download-summary' ? styles.controlButtonHover : {}),
+                          }}
                         >
                           ↓ Summary
                         </a>
@@ -1152,6 +1199,21 @@
                     )}
                   </div>
                 </div>
+
+                {/* Reset Button */}
+                <div style={{ padding: 'var(--space-md) var(--space-xl)', borderTop: '1px solid var(--border-subtle)', display: 'flex', justifyContent: 'center' }}>
+                  <button
+                    onClick={resetPipeline}
+                    onMouseEnter={() => setHoveredControl('reset')}
+                    onMouseLeave={() => setHoveredControl(null)}
+                    style={{
+                      ...styles.resetButton,
+                      ...(hoveredControl === 'reset' ? styles.resetButtonHover : {}),
+                    }}
+                  >
+                    Process Another Video
+                  </button>
+                </div>
               </section>
             )}
           </main>
@@ -1164,18 +1226,12 @@
               </span>
               <div style={styles.footerLinks}>
                 <a
-                  href="https://github.com"
+                  href="https://github.com/AtlasMeridia/transcript-pipeline"
                   target="_blank"
                   rel="noopener noreferrer"
                   style={styles.footerLink}
                 >
                   GitHub
-                </a>
-                <a
-                  href="#"
-                  style={styles.footerLink}
-                >
-                  Docs
                 </a>
               </div>
             </div>

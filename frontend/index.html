@@ -2,11 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0e1318">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Transcript Pipeline</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+  <!-- Privacy-respecting analytics (Issue #8) -->
+  <script defer data-domain="transcript.atlasmeridiagroup.com" src="https://plausible.io/js/script.js"></script>
   <style>
     :root {
       /* ═══════════════════════════════════════════════════════════════
@@ -60,8 +65,11 @@
       --border-color: var(--navy-600);
 
       /* Typography */
+      --font-display: 'Cormorant Garamond', Georgia, serif;
       --font-serif: 'Cormorant Garamond', Georgia, serif;
+      --font-body: 'Lora', Georgia, serif;
       --font-sans: 'DM Sans', -apple-system, sans-serif;
+      --font-ui: 'DM Sans', system-ui, sans-serif;
       --font-mono: 'IBM Plex Mono', 'JetBrains Mono', monospace;
 
       /* Motion tokens */
@@ -139,6 +147,46 @@
     }
     ::-webkit-scrollbar-thumb:hover {
       background: var(--text-secondary);
+    }
+
+    /* ═══════════════════════════════════════════════════════════════
+       MOBILE-FIRST RESPONSIVE STYLES (Issue #7)
+       ═══════════════════════════════════════════════════════════════ */
+
+    /* Touch-friendly targets (min 44x44px) */
+    @media (max-width: 768px) {
+      html {
+        font-size: 15px;
+      }
+
+      /* Ensure minimum touch target sizes */
+      button, a, input[type="text"] {
+        min-height: 44px;
+      }
+
+      /* Stack layouts vertically */
+      .mobile-stack {
+        flex-direction: column !important;
+      }
+
+      /* Full-width inputs on mobile */
+      .mobile-full-width {
+        width: 100% !important;
+      }
+    }
+
+    @media (max-width: 480px) {
+      html {
+        font-size: 14px;
+      }
+    }
+
+    /* Smooth transitions for keyboard appearance */
+    @media (max-height: 500px) {
+      .hero-section {
+        padding-top: var(--space-lg) !important;
+        padding-bottom: var(--space-md) !important;
+      }
     }
   </style>
 </head>
@@ -230,6 +278,9 @@
     // Styles (CSS-in-JS)
     // ============================================================================
 
+    // Detect mobile viewport
+    const isMobile = () => window.innerWidth <= 768;
+
     const styles = {
       // Layout
       container: {
@@ -257,7 +308,7 @@
         justifyContent: 'space-between',
       },
       logo: {
-        fontFamily: 'var(--font-serif)',
+        fontFamily: 'var(--font-display)',
         fontSize: '1.25rem',
         fontWeight: 500,
         fontStyle: 'italic',
@@ -270,7 +321,7 @@
         alignItems: 'center',
       },
       navLink: {
-        fontFamily: 'var(--font-sans)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.875rem',
         color: 'var(--text-secondary)',
         textDecoration: 'none',
@@ -290,7 +341,7 @@
 
       // Hero section
       hero: {
-        padding: 'var(--space-3xl) var(--space-lg)',
+        padding: 'clamp(var(--space-xl), 8vw, var(--space-3xl)) var(--space-lg)',
         maxWidth: '1200px',
         margin: '0 auto',
         width: '100%',
@@ -299,8 +350,8 @@
         maxWidth: '720px',
       },
       heroTitle: {
-        fontFamily: 'var(--font-serif)',
-        fontSize: 'clamp(2.5rem, 5vw, 3.5rem)',
+        fontFamily: 'var(--font-display)',
+        fontSize: 'clamp(2rem, 5vw, 3.5rem)',
         fontWeight: 400,
         lineHeight: 1.15,
         marginBottom: 'var(--space-md)',
@@ -313,8 +364,8 @@
         backgroundClip: 'text',
       },
       heroSubtitle: {
-        fontFamily: 'var(--font-serif)',
-        fontSize: '1.25rem',
+        fontFamily: 'var(--font-display)',
+        fontSize: 'clamp(1rem, 2.5vw, 1.25rem)',
         fontStyle: 'italic',
         color: 'var(--text-secondary)',
         lineHeight: 1.5,
@@ -323,7 +374,7 @@
       // Main content
       main: {
         flex: 1,
-        padding: '0 var(--space-lg) var(--space-3xl)',
+        padding: '0 var(--space-md) var(--space-2xl)',
         maxWidth: '1200px',
         margin: '0 auto',
         width: '100%',
@@ -331,7 +382,7 @@
 
       // Input section
       inputSection: {
-        marginBottom: 'var(--space-2xl)',
+        marginBottom: 'var(--space-xl)',
       },
       inputLabel: {
         fontFamily: 'var(--font-mono)',
@@ -346,6 +397,10 @@
         display: 'flex',
         gap: 'var(--space-md)',
         alignItems: 'stretch',
+        flexDirection: 'row',
+      },
+      inputWrapperMobile: {
+        flexDirection: 'column',
       },
       input: {
         flex: 1,
@@ -353,11 +408,12 @@
         border: '1px solid var(--border-color)',
         borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-lg)',
-        fontFamily: 'var(--font-sans)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '1rem',
         color: 'var(--text-primary)',
         outline: 'none',
         transition: 'border-color var(--transition-fast), box-shadow var(--transition-fast)',
+        minHeight: '48px',
       },
       inputFocused: {
         borderColor: 'var(--accent)',
@@ -368,7 +424,7 @@
         border: 'none',
         borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-xl)',
-        fontFamily: 'var(--font-sans)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.875rem',
         fontWeight: 500,
         letterSpacing: '0.05em',
@@ -378,6 +434,7 @@
         transition: 'all var(--transition-base)',
         whiteSpace: 'nowrap',
         boxShadow: '0 4px 20px rgba(201, 146, 74, 0.25)',
+        minHeight: '48px',
       },
       submitButtonDisabled: {
         background: 'var(--bg-elevated)',
@@ -390,80 +447,138 @@
         boxShadow: '0 6px 30px rgba(201, 146, 74, 0.35)',
       },
 
-      // Progress section
-      progressSection: {
-        marginBottom: 'var(--space-2xl)',
-      },
-      progressHeader: {
+      // Cost estimate display (Issue #4)
+      costEstimate: {
+        marginTop: 'var(--space-sm)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.75rem',
+        color: 'var(--text-muted)',
         display: 'flex',
-        justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 'var(--space-md)',
+        flexWrap: 'wrap',
+      },
+      costBadge: {
+        background: 'var(--accent-gold-subtle)',
+        padding: '2px 8px',
+        borderRadius: 'var(--border-radius-sm)',
+        color: 'var(--accent)',
+      },
+
+      // Progress section - Redesigned (Issue #11)
+      progressSection: {
+        marginBottom: 'var(--space-xl)',
+        position: 'relative',
+      },
+      // Progress bar at top (Option B from Issue #11)
+      progressBar: {
+        position: 'fixed',
+        top: '60px',
+        left: 0,
+        right: 0,
+        height: '3px',
+        background: 'var(--bg-deep)',
+        zIndex: 99,
+        overflow: 'hidden',
+      },
+      progressBarFill: {
+        height: '100%',
+        background: 'linear-gradient(90deg, var(--accent) 0%, var(--accent-light) 100%)',
+        transition: 'width 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
+        boxShadow: '0 0 10px var(--accent)',
+      },
+      // Centered status card
+      statusCard: {
+        background: 'var(--bg-card)',
+        borderRadius: 'var(--border-radius)',
+        border: '1px solid var(--border-subtle)',
+        padding: 'var(--space-lg) var(--space-xl)',
+        textAlign: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+      },
+      statusPhase: {
+        fontFamily: 'var(--font-display)',
+        fontSize: 'clamp(1.25rem, 3vw, 1.5rem)',
+        fontWeight: 400,
+        color: 'var(--text-primary)',
+        marginBottom: 'var(--space-xs)',
+      },
+      statusMessage: {
+        fontFamily: 'var(--font-ui)',
+        fontSize: '0.9375rem',
+        color: 'var(--text-secondary)',
         marginBottom: 'var(--space-md)',
       },
-      progressTitle: {
+      statusMeta: {
+        fontFamily: 'var(--font-mono)',
+        fontSize: '0.75rem',
+        color: 'var(--text-muted)',
+      },
+      // Phase steps indicator
+      phaseSteps: {
+        display: 'flex',
+        justifyContent: 'center',
+        gap: 'var(--space-xs)',
+        marginTop: 'var(--space-md)',
+      },
+      phaseStep: {
+        width: '8px',
+        height: '8px',
+        borderRadius: '50%',
+        background: 'var(--navy-600)',
+        transition: 'all var(--transition-base)',
+      },
+      phaseStepActive: {
+        background: 'var(--accent)',
+        boxShadow: '0 0 8px var(--accent)',
+      },
+      phaseStepComplete: {
+        background: 'var(--success)',
+      },
+      // Collapsible details toggle
+      detailsToggle: {
         fontFamily: 'var(--font-mono)',
         fontSize: '0.6875rem',
         textTransform: 'uppercase',
         letterSpacing: '0.1em',
         color: 'var(--text-muted)',
-      },
-      phaseIndicator: {
-        display: 'flex',
-        gap: 'var(--space-lg)',
-        fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
-      },
-      phase: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 'var(--space-xs)',
-        color: 'var(--text-muted)',
-        transition: 'color var(--transition-base)',
-      },
-      phaseActive: {
-        color: 'var(--accent)',
-      },
-      phaseComplete: {
-        color: 'var(--success)',
-      },
-      phaseDot: {
-        width: '4px',
-        height: '4px',
-        borderRadius: '50%',
-        background: 'currentColor',
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: 'var(--space-sm)',
+        marginTop: 'var(--space-md)',
+        transition: 'color var(--transition-fast)',
       },
 
-      // Waveform
-      waveformContainer: {
-        background: 'var(--bg-secondary)',
-        borderRadius: 'var(--border-radius-sm)',
-        border: '1px solid var(--border-subtle)',
-        padding: 'var(--space-md)',
-        overflow: 'hidden',
-      },
-
-      // Log section
+      // Log section - collapsible (Issue #11)
       logSection: {
-        marginBottom: 'var(--space-2xl)',
+        marginBottom: 'var(--space-xl)',
+        overflow: 'hidden',
+        transition: 'max-height var(--transition-slow)',
+      },
+      logSectionCollapsed: {
+        maxHeight: 0,
       },
       logContainer: {
         background: 'var(--bg-secondary)',
         borderRadius: 'var(--border-radius-sm)',
         border: '1px solid var(--border-subtle)',
         padding: 'var(--space-md)',
-        maxHeight: '200px',
+        maxHeight: '160px',
         overflowY: 'auto',
       },
       logEntry: {
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
+        fontSize: '0.6875rem',
         lineHeight: 1.8,
         display: 'flex',
-        gap: 'var(--space-md)',
+        gap: 'var(--space-sm)',
       },
       logTimestamp: {
         color: 'var(--text-muted)',
         flexShrink: 0,
+        opacity: 0.6,
       },
       logMessage: {
         color: 'var(--text-secondary)',
@@ -475,7 +590,7 @@
         color: 'var(--error)',
       },
       logInfo: {
-        color: 'var(--info)',
+        color: 'var(--text-secondary)',
       },
 
       // Error display
@@ -484,8 +599,8 @@
         border: '1px solid rgba(176, 84, 84, 0.3)',
         borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-md) var(--space-lg)',
-        marginBottom: 'var(--space-2xl)',
-        fontFamily: 'var(--font-mono)',
+        marginBottom: 'var(--space-xl)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.875rem',
         color: 'var(--error)',
       },
@@ -501,12 +616,12 @@
         overflow: 'hidden',
       },
       resultHeader: {
-        padding: 'var(--space-lg) var(--space-xl)',
+        padding: 'var(--space-md) var(--space-lg)',
         borderBottom: '1px solid var(--border-subtle)',
       },
       resultTitle: {
-        fontFamily: 'var(--font-serif)',
-        fontSize: '1.75rem',
+        fontFamily: 'var(--font-display)',
+        fontSize: 'clamp(1.25rem, 3vw, 1.75rem)',
         fontWeight: 400,
         color: 'var(--text-primary)',
         marginBottom: 'var(--space-xs)',
@@ -514,19 +629,32 @@
       },
       resultMeta: {
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
+        fontSize: '0.6875rem',
         color: 'var(--text-muted)',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 'var(--space-sm)',
+      },
+      costDisplay: {
+        background: 'var(--success-subtle)',
+        padding: '2px 6px',
+        borderRadius: 'var(--border-radius-sm)',
+        color: 'var(--success)',
       },
 
-      // Tabs
+      // Tabs - swipeable on mobile (Issue #7)
       tabsContainer: {
         display: 'flex',
         borderBottom: '1px solid var(--border-subtle)',
         background: 'var(--bg-secondary)',
+        overflowX: 'auto',
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'none',
+        msOverflowStyle: 'none',
       },
       tab: {
-        padding: 'var(--space-md) var(--space-xl)',
-        fontFamily: 'var(--font-sans)',
+        padding: 'var(--space-md) var(--space-lg)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.875rem',
         color: 'var(--text-secondary)',
         background: 'transparent',
@@ -535,24 +663,30 @@
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
         marginBottom: '-1px',
+        whiteSpace: 'nowrap',
+        minHeight: '48px',
+        flex: 1,
+        textAlign: 'center',
       },
       tabActive: {
         color: 'var(--text-primary)',
         borderBottomColor: 'var(--accent)',
       },
 
-      // Controls row
+      // Controls row - responsive (Issue #7)
       controlsRow: {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 'var(--space-md) var(--space-xl)',
+        padding: 'var(--space-sm) var(--space-md)',
         borderBottom: '1px solid var(--border-subtle)',
         background: 'var(--bg-secondary)',
+        flexWrap: 'wrap',
+        gap: 'var(--space-sm)',
       },
       controlButton: {
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
+        fontSize: '0.6875rem',
         padding: 'var(--space-sm) var(--space-md)',
         background: 'transparent',
         border: '1px solid var(--border-color)',
@@ -564,6 +698,7 @@
         display: 'inline-flex',
         alignItems: 'center',
         gap: 'var(--space-xs)',
+        minHeight: '36px',
       },
       controlButtonHover: {
         borderColor: 'var(--accent)',
@@ -577,43 +712,46 @@
       downloadButtons: {
         display: 'flex',
         gap: 'var(--space-sm)',
+        flexWrap: 'wrap',
       },
       resetButton: {
         background: 'transparent',
         border: '1px solid var(--border-color)',
         borderRadius: 'var(--border-radius-sm)',
         padding: 'var(--space-sm) var(--space-lg)',
-        fontFamily: 'var(--font-sans)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.875rem',
         color: 'var(--text-secondary)',
         cursor: 'pointer',
         transition: 'all var(--transition-fast)',
-        marginTop: 'var(--space-md)',
+        minHeight: '44px',
       },
       resetButtonHover: {
         borderColor: 'var(--accent)',
         color: 'var(--accent)',
       },
 
-      // Content area
+      // Content area - optimized for mobile reading (Issue #7)
       contentArea: {
-        padding: 'var(--space-xl)',
-        maxHeight: '600px',
+        padding: 'var(--space-md)',
+        maxHeight: 'calc(100vh - 300px)',
+        minHeight: '200px',
         overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       },
       rawContent: {
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.8125rem',
+        fontSize: '0.75rem',
         lineHeight: 1.7,
         color: 'var(--text-secondary)',
         whiteSpace: 'pre-wrap',
         wordWrap: 'break-word',
       },
 
-      // Footer
+      // Footer - responsive (Issue #7)
       footer: {
         borderTop: '1px solid var(--border-subtle)',
-        padding: 'var(--space-xl) var(--space-lg)',
+        padding: 'var(--space-lg) var(--space-md)',
         marginTop: 'auto',
       },
       footerInner: {
@@ -622,22 +760,27 @@
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        flexWrap: 'wrap',
+        gap: 'var(--space-sm)',
       },
       footerText: {
         fontFamily: 'var(--font-mono)',
-        fontSize: '0.75rem',
+        fontSize: '0.6875rem',
         color: 'var(--text-muted)',
       },
       footerLinks: {
         display: 'flex',
-        gap: 'var(--space-lg)',
+        gap: 'var(--space-md)',
       },
       footerLink: {
-        fontFamily: 'var(--font-sans)',
+        fontFamily: 'var(--font-ui)',
         fontSize: '0.8125rem',
         color: 'var(--text-secondary)',
         textDecoration: 'none',
         transition: 'color 0.2s ease',
+        minHeight: '44px',
+        display: 'flex',
+        alignItems: 'center',
       },
     };
 
@@ -828,33 +971,105 @@
     };
 
     // ============================================================================
-    // Phase Indicator Component
+    // Helper Functions (Issue #4 - Cost Estimation, Issue #6 - Status Messages)
     // ============================================================================
 
-    const PhaseIndicator = ({ currentPhase, phases }) => {
-      const phaseIndex = phases.indexOf(currentPhase);
+    // Cost calculation based on ElevenLabs Scribe pricing (~$0.40/hour)
+    const COST_PER_HOUR = 0.40;
 
-      const friendlyPhaseNames = {
-        'download': 'Download',
-        'transcribing': 'Transcribe',
-        'extracting': 'Summarize',
-        'complete': 'Complete',
+    const calculateCost = (durationSeconds) => {
+      if (!durationSeconds) return null;
+      const hours = durationSeconds / 3600;
+      const cost = hours * COST_PER_HOUR;
+      return cost < 0.01 ? '< $0.01' : `~$${cost.toFixed(2)}`;
+    };
+
+    // User-friendly status messages (Issue #6)
+    const getStatusMessage = (phase, rawMessage) => {
+      const friendlyMessages = {
+        'download': {
+          default: 'Fetching video information...',
+          patterns: [
+            { match: /download/i, message: 'Downloading audio from YouTube...' },
+            { match: /extract/i, message: 'Extracting audio track...' },
+            { match: /fetch/i, message: 'Fetching video details...' },
+          ]
+        },
+        'transcribing': {
+          default: 'Converting speech to text...',
+          patterns: [
+            { match: /chunk/i, message: 'Processing audio segments...' },
+            { match: /whisper/i, message: 'Analyzing audio with Whisper AI...' },
+            { match: /scribe|elevenlabs/i, message: 'Transcribing with ElevenLabs Scribe...' },
+            { match: /send/i, message: 'Sending audio to transcription service...' },
+            { match: /progress|%/i, message: 'Transcribing speech to text...' },
+          ]
+        },
+        'extracting': {
+          default: 'Generating insights with AI...',
+          patterns: [
+            { match: /claude/i, message: 'Analyzing content with Claude AI...' },
+            { match: /gpt|openai/i, message: 'Generating summary with GPT...' },
+            { match: /extract/i, message: 'Extracting key insights...' },
+            { match: /summar/i, message: 'Creating your summary...' },
+          ]
+        },
+        'complete': {
+          default: 'All done! Your content is ready.',
+          patterns: []
+        }
       };
 
+      const phaseConfig = friendlyMessages[phase] || { default: rawMessage, patterns: [] };
+
+      if (rawMessage) {
+        for (const { match, message } of phaseConfig.patterns) {
+          if (match.test(rawMessage)) return message;
+        }
+      }
+
+      return phaseConfig.default;
+    };
+
+    // Phase display names
+    const getPhaseDisplayName = (phase) => {
+      const names = {
+        'download': 'Downloading',
+        'transcribing': 'Transcribing',
+        'extracting': 'Summarizing',
+        'complete': 'Complete',
+      };
+      return names[phase] || phase;
+    };
+
+    // Progress percentage calculation
+    const getProgressPercent = (phase, phases) => {
+      const phaseIndex = phases.indexOf(phase);
+      if (phaseIndex === -1) return 0;
+      if (phase === 'complete') return 100;
+      // Each phase is ~25% (download, transcribe, extract, complete)
+      return Math.min(95, (phaseIndex + 1) * 25);
+    };
+
+    // ============================================================================
+    // Phase Steps Component (Issue #5 - Improved visualization)
+    // ============================================================================
+
+    const PhaseSteps = ({ currentPhase, phases }) => {
+      const phaseIndex = phases.indexOf(currentPhase);
+
       return (
-        <div style={styles.phaseIndicator}>
+        <div style={styles.phaseSteps}>
           {phases.map((phase, i) => (
             <div
               key={phase}
               style={{
-                ...styles.phase,
-                ...(i < phaseIndex ? styles.phaseComplete : {}),
-                ...(i === phaseIndex ? styles.phaseActive : {}),
+                ...styles.phaseStep,
+                ...(i < phaseIndex ? styles.phaseStepComplete : {}),
+                ...(i === phaseIndex ? styles.phaseStepActive : {}),
               }}
-            >
-              <span style={styles.phaseDot} />
-              <span>{friendlyPhaseNames[phase] || phase}</span>
-            </div>
+              title={getPhaseDisplayName(phase)}
+            />
           ))}
         </div>
       );
@@ -886,6 +1101,7 @@
       const [url, setUrl] = useState('');
       const [isProcessing, setIsProcessing] = useState(false);
       const [currentPhase, setCurrentPhase] = useState(null);
+      const [currentMessage, setCurrentMessage] = useState('');
       const [logs, setLogs] = useState([]);
       const [results, setResults] = useState(null);
       const [error, setError] = useState(null);
@@ -896,8 +1112,41 @@
       const [inputFocused, setInputFocused] = useState(false);
       const [buttonHovered, setButtonHovered] = useState(false);
       const [hoveredControl, setHoveredControl] = useState(null);
+      const [showDetails, setShowDetails] = useState(false);
+      const [isMobileView, setIsMobileView] = useState(isMobile());
+      const [videoDuration, setVideoDuration] = useState(null);
 
       const phases = ['download', 'transcribing', 'extracting', 'complete'];
+
+      // Handle responsive layout
+      useEffect(() => {
+        const handleResize = () => setIsMobileView(isMobile());
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+      }, []);
+
+      // Touch swipe gesture support for tab switching (Issue #7)
+      const touchStartX = useRef(null);
+      const handleTouchStart = (e) => {
+        touchStartX.current = e.touches[0].clientX;
+      };
+      const handleTouchEnd = (e) => {
+        if (!touchStartX.current || !results) return;
+        const touchEndX = e.changedTouches[0].clientX;
+        const diff = touchStartX.current - touchEndX;
+        const threshold = 50; // minimum swipe distance
+
+        if (Math.abs(diff) > threshold) {
+          if (diff > 0 && results.summary && activeTab === 'transcript') {
+            // Swipe left - go to summary
+            setActiveTab('summary');
+          } else if (diff < 0 && activeTab === 'summary') {
+            // Swipe right - go to transcript
+            setActiveTab('transcript');
+          }
+        }
+        touchStartX.current = null;
+      };
 
       useEffect(() => {
         api.getConfig()
@@ -921,27 +1170,48 @@
         setLogs([]);
         setResults(null);
         setError(null);
+        setVideoDuration(null);
+        setCurrentMessage('Getting ready...');
+        setShowDetails(false);
 
         try {
-          addLog('Getting ready...', 'dim');
+          addLog('Initializing pipeline...', 'default');
 
           const job = await api.startProcessing(url);
           setCurrentJobId(job.job_id);
-          addLog('Starting transcription', 'info');
+          setCurrentMessage('Connecting to YouTube...');
+          addLog('Started processing job', 'info');
 
           api.streamJobStatus(
             job.job_id,
             (data) => {
               setCurrentPhase(data.phase);
+
+              // Capture video duration when available (Issue #4)
+              if (data.metadata?.duration && !videoDuration) {
+                setVideoDuration(data.metadata.duration);
+              }
+
               if (data.message) {
+                // Show friendly message (Issue #6)
+                setCurrentMessage(getStatusMessage(data.phase, data.message));
+
+                // Log technical details (collapsible)
                 const logType = data.status === 'error' ? 'error' :
-                               data.status === 'complete' ? 'success' : 'info';
+                               data.status === 'complete' ? 'success' : 'default';
                 addLog(data.message, logType);
               }
             },
             async (data) => {
               if (data.status === 'complete') {
-                addLog('Preparing your transcript', 'info');
+                setCurrentMessage('Preparing your content...');
+                addLog('Processing complete, fetching results...', 'info');
+
+                // Capture final duration
+                if (data.metadata?.duration) {
+                  setVideoDuration(data.metadata.duration);
+                }
+
                 try {
                   const [transcript, summary] = await Promise.all([
                     api.getTranscript(job.job_id),
@@ -953,22 +1223,26 @@
                     summary,
                     metadata: data.metadata,
                   });
-                  addLog('Done! Your transcript is ready', 'success');
+                  setCurrentMessage('All done!');
+                  addLog('Your transcript is ready to view', 'success');
                 } catch (fetchErr) {
                   setError('Failed to load results: ' + fetchErr.message);
                 }
               } else if (data.status === 'error') {
                 setError(data.error);
+                setCurrentMessage('Something went wrong');
               }
               setIsProcessing(false);
             },
             (err) => {
-              setError('Connection lost');
+              setError('Connection lost. Please try again.');
+              setCurrentMessage('Connection interrupted');
               setIsProcessing(false);
             }
           );
         } catch (err) {
           setError(err.message);
+          setCurrentMessage('Failed to start');
           setIsProcessing(false);
         }
       };
@@ -989,8 +1263,11 @@
         setResults(null);
         setError(null);
         setCurrentPhase(null);
+        setCurrentMessage('');
         setCurrentJobId(null);
         setHoveredControl(null);
+        setVideoDuration(null);
+        setShowDetails(false);
       };
 
       return (
@@ -1033,7 +1310,10 @@
             {/* Input Section */}
             <section style={styles.inputSection}>
               <label style={styles.inputLabel}>YouTube URL</label>
-              <div style={styles.inputWrapper}>
+              <div style={{
+                ...styles.inputWrapper,
+                ...(isMobileView ? styles.inputWrapperMobile : {}),
+              }}>
                 <input
                   type="text"
                   value={url}
@@ -1041,8 +1321,10 @@
                   onKeyDown={(e) => e.key === 'Enter' && !isProcessing && processVideo()}
                   onFocus={() => setInputFocused(true)}
                   onBlur={() => setInputFocused(false)}
-                  placeholder="https://youtube.com/watch?v=..."
+                  placeholder="Paste a YouTube link..."
                   disabled={isProcessing}
+                  autoComplete="off"
+                  autoCapitalize="off"
                   style={{
                     ...styles.input,
                     ...(inputFocused ? styles.inputFocused : {}),
@@ -1057,24 +1339,63 @@
                     ...styles.submitButton,
                     ...((isProcessing || !url.trim()) ? styles.submitButtonDisabled : {}),
                     ...(buttonHovered && !isProcessing && url.trim() ? styles.submitButtonHover : {}),
+                    ...(isMobileView ? { width: '100%' } : {}),
                   }}
                 >
                   {isProcessing ? 'Processing...' : 'Process'}
                 </button>
               </div>
+              {/* Cost estimate display (Issue #4) */}
+              {config?.transcription_engine === 'elevenlabs' && (
+                <div style={styles.costEstimate}>
+                  <span>ElevenLabs Scribe</span>
+                  <span style={styles.costBadge}>~$0.40/hour</span>
+                </div>
+              )}
             </section>
 
-            {/* Progress Section */}
-            {(isProcessing || logs.length > 0) && (
-              <section style={styles.progressSection}>
-                <div style={styles.progressHeader}>
-                  <span style={styles.progressTitle}>Processing</span>
-                  {currentPhase && <PhaseIndicator currentPhase={currentPhase} phases={phases} />}
+            {/* Progress Section - Redesigned (Issue #11) */}
+            {isProcessing && (
+              <>
+                {/* Fixed progress bar at top */}
+                <div style={styles.progressBar}>
+                  <div
+                    style={{
+                      ...styles.progressBarFill,
+                      width: `${getProgressPercent(currentPhase, phases)}%`,
+                    }}
+                  />
                 </div>
-                <div style={styles.waveformContainer}>
-                  <Waveform isActive={isProcessing} phase={currentPhase} />
-                </div>
-              </section>
+
+                {/* Status card with centered content */}
+                <section style={styles.progressSection}>
+                  <div style={styles.statusCard}>
+                    <div style={styles.statusPhase}>
+                      {getPhaseDisplayName(currentPhase) || 'Starting'}
+                    </div>
+                    <div style={styles.statusMessage}>
+                      {currentMessage}
+                    </div>
+                    {videoDuration && (
+                      <div style={styles.statusMeta}>
+                        {formatDuration(videoDuration)}
+                        {config?.transcription_engine === 'elevenlabs' && (
+                          <> · Est. cost: {calculateCost(videoDuration)}</>
+                        )}
+                      </div>
+                    )}
+                    <PhaseSteps currentPhase={currentPhase} phases={phases} />
+
+                    {/* Collapsible details toggle */}
+                    <button
+                      onClick={() => setShowDetails(!showDetails)}
+                      style={styles.detailsToggle}
+                    >
+                      {showDetails ? '▲ Hide Details' : '▼ Show Details'}
+                    </button>
+                  </div>
+                </section>
+              </>
             )}
 
             {/* Error Display */}
@@ -1084,9 +1405,12 @@
               </div>
             )}
 
-            {/* Logs */}
-            {logs.length > 0 && (
-              <section style={styles.logSection}>
+            {/* Logs - Collapsible (Issue #11) */}
+            {logs.length > 0 && (isProcessing ? showDetails : true) && (
+              <section style={{
+                ...styles.logSection,
+                ...(isProcessing && !showDetails ? styles.logSectionCollapsed : {}),
+              }}>
                 <label style={styles.inputLabel}>Activity Log</label>
                 <div style={styles.logContainer}>
                   {logs.map((log, i) => (
@@ -1106,7 +1430,13 @@
                     <div style={styles.resultMeta}>
                       {results.metadata?.author && <span>{results.metadata.author}</span>}
                       {results.metadata?.duration && (
-                        <span> · {formatDuration(results.metadata.duration)}</span>
+                        <span>{formatDuration(results.metadata.duration)}</span>
+                      )}
+                      {/* Show actual cost (Issue #4) */}
+                      {results.metadata?.duration && config?.transcription_engine === 'elevenlabs' && (
+                        <span style={styles.costDisplay}>
+                          {calculateCost(results.metadata.duration)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1177,8 +1507,12 @@
                     </div>
                   </div>
 
-                  {/* Content */}
-                  <div style={styles.contentArea}>
+                  {/* Content - with swipe gesture support (Issue #7) */}
+                  <div
+                    style={styles.contentArea}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                  >
                     {previewMode ? (
                       <div
                         className="markdown-preview"

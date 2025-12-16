@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.utils import load_config, sanitize_filename, ensure_output_path, format_duration
 from src.downloader import VideoDownloader
-from src.transcriber import get_transcriber, BaseTranscriber, CaptionTranscriber, CaptionsUnavailableError
+from src.transcriber import get_transcriber, CaptionTranscriber, CaptionsUnavailableError
 from src.extractor import TranscriptExtractor
 from src.services import create_transcript_markdown, create_summary_markdown
 
@@ -182,8 +182,7 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
     # Get transcription configuration
     transcription_engine = config.get('transcription_engine', 'auto')
-    elevenlabs_api_key = config.get('elevenlabs_api_key')
-    scribe_model_id = config.get('scribe_model_id', 'scribe_v2')
+    mlx_model = config.get('mlx_whisper_model', 'large-v3-turbo')
     caption_language = config.get('caption_language', 'en')
 
     loop = asyncio.get_running_loop()
@@ -279,7 +278,7 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
                 )
 
                 # Use fallback engine
-                fallback_engine = config.get('caption_fallback_engine', 'whisper')
+                fallback_engine = config.get('caption_fallback_engine', 'mlx-whisper')
                 _update_and_broadcast(job_id,
                     status='transcribing',
                     phase='transcribing',
@@ -289,10 +288,7 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
                 transcriber = get_transcriber(
                     engine=fallback_engine,
-                    api_key=elevenlabs_api_key,
-                    scribe_model_id=scribe_model_id,
-                    model_name=config.get('whisper_model'),
-                    model_dir=config.get('whisper_model_dir'),
+                    model=mlx_model,
                 )
 
                 def transcription_progress(current: int, total: int, message: str = None):
@@ -393,10 +389,7 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
                 transcriber = get_transcriber(
                     engine=transcription_engine,
-                    api_key=elevenlabs_api_key,
-                    scribe_model_id=scribe_model_id,
-                    model_name=config.get('whisper_model'),
-                    model_dir=config.get('whisper_model_dir'),
+                    model=mlx_model,
                 )
 
                 def transcription_progress(current: int, total: int, message: str = None):
@@ -722,7 +715,7 @@ async def download_file(job_id: str, file_type: str):
 async def get_config():
     """Get current pipeline configuration (without sensitive data)."""
     config = load_config()
-    transcription_engine = config.get('transcription_engine', 'whisper')
+    transcription_engine = config.get('transcription_engine', 'auto')
     
     return {
         "default_llm": config.get('default_llm', 'claude'),
@@ -731,9 +724,7 @@ async def get_config():
         "has_openai_key": bool(config.get('openai_api_key')),
         # Transcription configuration
         "transcription_engine": transcription_engine,
-        "whisper_model": config.get('whisper_model', 'large-v3') if transcription_engine == 'whisper' else None,
-        "has_elevenlabs_key": bool(config.get('elevenlabs_api_key')),
-        "scribe_model_id": config.get('scribe_model_id', 'scribe_v2') if transcription_engine == 'elevenlabs' else None,
+        "mlx_whisper_model": config.get('mlx_whisper_model', 'large-v3-turbo'),
     }
 
 

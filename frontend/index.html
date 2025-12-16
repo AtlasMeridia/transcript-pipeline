@@ -970,18 +970,8 @@
     };
 
     // ============================================================================
-    // Helper Functions (Issue #4 - Cost Estimation, Issue #6 - Status Messages)
+    // Helper Functions (Issue #6 - Status Messages)
     // ============================================================================
-
-    // Cost calculation based on ElevenLabs Scribe pricing (~$0.40/hour)
-    const COST_PER_HOUR = 0.40;
-
-    const calculateCost = (durationSeconds) => {
-      if (!durationSeconds) return null;
-      const hours = durationSeconds / 3600;
-      const cost = hours * COST_PER_HOUR;
-      return cost < 0.01 ? '< $0.01' : `~$${cost.toFixed(2)}`;
-    };
 
     // User-friendly status messages (Issue #6)
     const getStatusMessage = (phase, rawMessage) => {
@@ -997,10 +987,10 @@
         'transcribing': {
           default: 'Converting speech to text...',
           patterns: [
-            { match: /chunk/i, message: 'Processing audio segments...' },
+            { match: /mlx/i, message: 'Transcribing with MLX Whisper...' },
             { match: /whisper/i, message: 'Analyzing audio with Whisper AI...' },
-            { match: /scribe|elevenlabs/i, message: 'Transcribing with ElevenLabs Scribe...' },
-            { match: /send/i, message: 'Sending audio to transcription service...' },
+            { match: /caption/i, message: 'Extracting YouTube captions...' },
+            { match: /send/i, message: 'Processing audio...' },
             { match: /progress|%/i, message: 'Transcribing speech to text...' },
           ]
         },
@@ -1344,11 +1334,11 @@
                   {isProcessing ? 'Processing...' : 'Process'}
                 </button>
               </div>
-              {/* Cost estimate display (Issue #4) */}
-              {config?.transcription_engine === 'elevenlabs' && (
+              {/* Model info display */}
+              {config?.mlx_whisper_model && config?.transcription_engine !== 'captions' && (
                 <div style={styles.costEstimate}>
-                  <span>ElevenLabs Scribe</span>
-                  <span style={styles.costBadge}>~$0.40/hour</span>
+                  <span>MLX Whisper</span>
+                  <span style={styles.costBadge}>{config.mlx_whisper_model}</span>
                 </div>
               )}
             </section>
@@ -1378,9 +1368,6 @@
                     {videoDuration && (
                       <div style={styles.statusMeta}>
                         {formatDuration(videoDuration)}
-                        {config?.transcription_engine === 'elevenlabs' && (
-                          <> · Est. cost: {calculateCost(videoDuration)}</>
-                        )}
                       </div>
                     )}
                     <PhaseSteps currentPhase={currentPhase} phases={phases} />
@@ -1430,12 +1417,6 @@
                       {results.metadata?.author && <span>{results.metadata.author}</span>}
                       {results.metadata?.duration && (
                         <span>{formatDuration(results.metadata.duration)}</span>
-                      )}
-                      {/* Show actual cost (Issue #4) */}
-                      {results.metadata?.duration && config?.transcription_engine === 'elevenlabs' && (
-                        <span style={styles.costDisplay}>
-                          {calculateCost(results.metadata.duration)}
-                        </span>
                       )}
                     </div>
                   </div>

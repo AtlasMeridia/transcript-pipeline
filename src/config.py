@@ -21,19 +21,13 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Transcription
-DEFAULT_TRANSCRIPTION_ENGINE = "auto"  # Try captions first, fall back to whisper
-DEFAULT_WHISPER_MODEL = "large-v3"
-DEFAULT_SCRIBE_MODEL = "scribe_v2"
+DEFAULT_TRANSCRIPTION_ENGINE = "auto"  # Try captions first, fall back to mlx-whisper
+DEFAULT_MLX_WHISPER_MODEL = "large-v3-turbo"
 SEGMENT_GAP_THRESHOLD_SECONDS = 1.2  # Gap threshold for word-to-segment grouping
 
 # YouTube Captions
 DEFAULT_CAPTION_LANGUAGE = "en"
-DEFAULT_CAPTION_FALLBACK_ENGINE = "whisper"  # Engine to use when captions unavailable
-
-# Chunked transcription for long audio (memory safety)
-CHUNK_DURATION_SECONDS = 30 * 60  # 30 minutes per chunk
-CHUNK_OVERLAP_SECONDS = 5  # 5 second overlap for deduplication
-MIN_AUDIO_DURATION_FOR_CHUNKING = 30 * 60  # Only chunk audio > 30 minutes
+DEFAULT_CAPTION_FALLBACK_ENGINE = "mlx-whisper"  # Engine to use when captions unavailable
 
 # Extraction
 MAX_CHARS_PER_CHUNK = 8000  # Character budget per chunk for LLM context
@@ -83,10 +77,7 @@ class PipelineConfig:
 
     # Transcription settings
     transcription_engine: str = DEFAULT_TRANSCRIPTION_ENGINE
-    whisper_model: str = DEFAULT_WHISPER_MODEL
-    whisper_model_dir: Optional[str] = None
-    elevenlabs_api_key: Optional[str] = None
-    scribe_model_id: str = DEFAULT_SCRIBE_MODEL
+    mlx_whisper_model: str = DEFAULT_MLX_WHISPER_MODEL
 
     # Caption settings
     caption_language: str = DEFAULT_CAPTION_LANGUAGE
@@ -118,14 +109,6 @@ class PipelineConfig:
         """
         errors = []
 
-        # Validate transcription engine requirements
-        if self.transcription_engine in ("elevenlabs", "scribe"):
-            if not self.elevenlabs_api_key:
-                errors.append(
-                    "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs/scribe. "
-                    "Set the environment variable or use TRANSCRIPTION_ENGINE=whisper for local transcription."
-                )
-
         # Validate LLM requirements (unless extraction is disabled)
         if not no_extract:
             if self.default_llm == "claude" and not self.anthropic_api_key:
@@ -146,10 +129,7 @@ class PipelineConfig:
         """Convert config to dictionary (for backward compatibility)."""
         return {
             'transcription_engine': self.transcription_engine,
-            'whisper_model': self.whisper_model,
-            'whisper_model_dir': self.whisper_model_dir,
-            'elevenlabs_api_key': self.elevenlabs_api_key,
-            'scribe_model_id': self.scribe_model_id,
+            'mlx_whisper_model': self.mlx_whisper_model,
             'caption_language': self.caption_language,
             'caption_fallback_engine': self.caption_fallback_engine,
             'default_llm': self.default_llm,
@@ -179,10 +159,7 @@ def load_pipeline_config() -> PipelineConfig:
     return PipelineConfig(
         # Transcription
         transcription_engine=os.getenv('TRANSCRIPTION_ENGINE', DEFAULT_TRANSCRIPTION_ENGINE).lower(),
-        whisper_model=os.getenv('WHISPER_MODEL', DEFAULT_WHISPER_MODEL),
-        whisper_model_dir=os.getenv('WHISPER_MODEL_DIR'),
-        elevenlabs_api_key=os.getenv('ELEVENLABS_API_KEY'),
-        scribe_model_id=os.getenv('SCRIBE_MODEL_ID', DEFAULT_SCRIBE_MODEL),
+        mlx_whisper_model=os.getenv('MLX_WHISPER_MODEL', DEFAULT_MLX_WHISPER_MODEL),
 
         # Caption settings
         caption_language=os.getenv('CAPTION_LANGUAGE', DEFAULT_CAPTION_LANGUAGE),
@@ -234,16 +211,6 @@ def validate_config(config: dict, no_extract: bool = False) -> None:
         ConfigurationError: If required configuration is missing
     """
     errors = []
-
-    # Validate transcription engine requirements
-    engine = config.get('transcription_engine', DEFAULT_TRANSCRIPTION_ENGINE)
-
-    if engine in ('elevenlabs', 'scribe'):
-        if not config.get('elevenlabs_api_key'):
-            errors.append(
-                "ELEVENLABS_API_KEY is required when TRANSCRIPTION_ENGINE=elevenlabs/scribe. "
-                "Set the environment variable or use TRANSCRIPTION_ENGINE=whisper for local transcription."
-            )
 
     # Validate LLM requirements (unless extraction is disabled)
     if not no_extract:

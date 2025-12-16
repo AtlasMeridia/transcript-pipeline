@@ -30,6 +30,22 @@ services:
       - PORT=8000
     restart: unless-stopped
 
+  # Next.js Frontend
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+    container_name: transcript-web
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - transcript-api
+    restart: unless-stopped
+
   # CLI Service (use with --profile cli)
   transcript-pipeline:
     build: .

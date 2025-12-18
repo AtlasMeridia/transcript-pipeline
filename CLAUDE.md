@@ -23,9 +23,36 @@ docker-compose run --rm transcript-pipeline https://www.youtube.com/watch?v=VIDE
 # With options
 docker-compose run --rm transcript-pipeline URL --llm gpt --no-extract
 
-# Run API server
-docker-compose up api
+# Run backend API server (port 8000)
+docker-compose up transcript-api
+
+# Build with local Whisper transcription (one-time, adds ~2GB to image)
+docker-compose build --build-arg INSTALL_WHISPER=true transcript-api
 ```
+
+**Note**: The default Docker image uses ElevenLabs (cloud) for transcription. To use local Whisper transcription, you must rebuild with `INSTALL_WHISPER=true`. This only needs to be done once - the setting persists in the built image.
+
+### Running the Full Stack (Frontend + Backend)
+
+To run the complete web application locally:
+
+```bash
+# Terminal 1: Start the backend API (Docker)
+docker-compose up transcript-api
+
+# Terminal 2: Start the frontend (Next.js)
+cd web
+npm install  # first time only
+npm run dev
+```
+
+Then open http://localhost:3000 in your browser.
+
+**Important**: The frontend requires `web/.env.local` with:
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+This tells the Next.js frontend where to find the backend API.
 
 ### Local Python
 ```bash
@@ -181,6 +208,72 @@ Modify functions in `src/services/markdown_service.py`:
 1. Add constant to `src/config.py`
 2. Add field to `PipelineConfig` dataclass
 3. Update `load_pipeline_config()` to read from environment
+
+## Next.js Frontend (web/)
+
+The frontend is a Next.js 16 application with TypeScript located in the `web/` directory.
+
+### Frontend Architecture
+```
+web/
+├── app/                    # Next.js App Router
+│   ├── layout.tsx         # Root layout with font configuration
+│   ├── page.tsx           # Main home page
+│   └── globals.css        # Global styles & ATLAS Meridia design tokens
+├── src/components/        # React components
+│   ├── Header.tsx
+│   ├── HeroSection.tsx
+│   ├── VideoUrlInput.tsx
+│   ├── ProcessingStatus.tsx
+│   ├── ResultsViewer.tsx
+│   └── ActivityLog.tsx
+├── src/lib/              # Utilities & API client
+│   ├── api.ts           # Backend API client
+│   ├── types.ts         # TypeScript types
+│   └── providers.tsx    # React Query provider
+├── src/stores/          # Zustand state management
+│   └── uiStore.ts
+└── src/hooks/           # Custom hooks
+    └── useJobStream.ts  # SSE streaming hook
+```
+
+### Design System: ATLAS Meridia v3.1
+
+The frontend uses a custom design system with these key colors:
+- **Navy scale**: `#08090c` to `#3d4754` (backgrounds)
+- **Cream**: `#f8f6f1` (light text)
+- **Amber-gold accent**: `#c9924a` (primary accent)
+- **Fonts**: Cormorant Garamond (headings), DM Sans (UI), IBM Plex Mono (code)
+
+Design tokens are defined in `web/app/globals.css` using Tailwind v4's `@theme` block.
+
+### Tailwind CSS v4 Configuration
+
+**IMPORTANT**: Tailwind v4 uses CSS-first configuration via `@theme` blocks. Be careful with variable naming:
+
+- Font utilities: Use `--font-*` (e.g., `--font-heading`) → generates `.font-heading` class
+- Spacing/width: Do NOT use `--spacing-*` for custom values - this conflicts with Tailwind's width utilities like `max-w-3xl`
+  - Instead use non-conflicting names like `--space-*` for custom spacing tokens
+
+Example of correct `@theme` configuration:
+```css
+@theme inline {
+  /* Correct: generates .font-heading utility */
+  --font-heading: 'Cormorant Garamond', Georgia, serif;
+
+  /* WRONG: --spacing-3xl would break max-w-3xl */
+  /* --spacing-3xl: 96px; */
+
+  /* Correct: use non-conflicting name */
+  --space-3xl: 96px;
+}
+```
+
+### Frontend Environment Variables
+
+| Variable | Location | Description |
+|----------|----------|-------------|
+| `NEXT_PUBLIC_API_URL` | `web/.env.local` | Backend API URL (default: `http://localhost:8000`) |
 
 ## Docker Image Details
 

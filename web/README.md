@@ -25,17 +25,25 @@ Modern React/Next.js frontend for the Transcript Pipeline application.
 npm install
 ```
 
-2. Set environment variable (optional, defaults to `http://localhost:8000`):
+2. Create `.env.local` file to point to the backend:
 ```bash
-export NEXT_PUBLIC_API_URL=http://localhost:8000
+echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
 ```
 
-3. Run development server:
+3. Make sure the backend API is running (in another terminal):
+```bash
+# From project root
+docker-compose up transcript-api
+```
+
+4. Run development server:
 ```bash
 npm run dev
 ```
 
 The app will be available at `http://localhost:3000`.
+
+**Note**: Without `.env.local`, the frontend will try to call `/api/*` on its own origin (port 3000), which will fail since the API runs on port 8000.
 
 ### Building for Production
 

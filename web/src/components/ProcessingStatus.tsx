@@ -126,7 +126,7 @@ export function ProcessingStatus({ job }: ProcessingStatusProps) {
       {/* Status card */}
       <section className="mb-10 relative">
         <div className="bg-[var(--bg-card)] rounded border border-[var(--border-subtle)] px-6 py-6 text-center relative overflow-hidden">
-          <div className="font-display text-[clamp(1.25rem,3vw,1.5rem)] font-normal text-[var(--text-primary)] mb-1">
+          <div className="font-heading text-[clamp(1.25rem,3vw,1.5rem)] font-normal text-[var(--text-primary)] mb-1">
             {phaseDisplayName}
           </div>
           <div className="font-ui text-[0.9375rem] text-[var(--text-secondary)] mb-4">

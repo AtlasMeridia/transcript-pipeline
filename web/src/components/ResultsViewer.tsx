@@ -79,7 +79,7 @@ export function ResultsViewer({ results, jobId }: ResultsViewerProps) {
       <div className="bg-[var(--bg-card)] rounded border border-[var(--border-subtle)] overflow-hidden">
         {/* Result Header */}
         <div className="px-4 py-4 border-b border-[var(--border-subtle)]">
-          <h2 className="font-display text-[clamp(1.25rem,3vw,1.75rem)] font-normal text-[var(--text-primary)] mb-1 leading-tight">
+          <h2 className="font-heading text-[clamp(1.25rem,3vw,1.75rem)] font-normal text-[var(--text-primary)] mb-1 leading-tight">
             {results.title}
           </h2>
           <div className="font-mono text-[0.6875rem] text-[var(--text-muted)] flex flex-wrap gap-2">

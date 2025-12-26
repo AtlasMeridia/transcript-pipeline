@@ -59,13 +59,19 @@ class VideoDownloader:
         except Exception as e:
             raise Exception(f"Failed to extract video info: {str(e)}")
 
-    def download_audio(self, url: str, output_filename: Optional[str] = None) -> tuple[str, Dict]:
+    def download_audio(
+        self,
+        url: str,
+        output_filename: Optional[str] = None,
+        metadata: Optional[Dict] = None,
+    ) -> tuple[str, Dict]:
         """
         Download audio from YouTube video.
 
         Args:
             url: YouTube video URL
             output_filename: Optional custom filename (without extension)
+            metadata: Optional pre-fetched metadata to avoid redundant API call
 
         Returns:
             Tuple of (audio_file_path, metadata_dict)
@@ -73,9 +79,10 @@ class VideoDownloader:
         Raises:
             Exception: If download fails
         """
-        # First get metadata
-        logger.info("Fetching video information...")
-        metadata = self.get_video_info(url)
+        # Use provided metadata or fetch it
+        if metadata is None:
+            logger.info("Fetching video information...")
+            metadata = self.get_video_info(url)
 
         # Determine output filename
         if output_filename is None:

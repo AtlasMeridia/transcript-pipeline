@@ -23,11 +23,8 @@ from pydantic import BaseModel, HttpUrl
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.utils import load_config, sanitize_filename, ensure_output_path, format_duration
-from src.downloader import VideoDownloader
-from src.transcriber import get_transcriber, CaptionTranscriber, CaptionsUnavailableError
-from src.extractor import TranscriptExtractor
-from src.services import create_transcript_markdown, create_summary_markdown
+from src.utils import load_config
+from src.services import process_video, ProgressUpdate
 
 
 # ============================================================================
@@ -172,329 +169,71 @@ def _update_and_broadcast(job_id: str, **updates) -> None:
 async def process_video_async(job_id: str, url: str, llm_type: str, extract: bool):
     """
     Process a video asynchronously, updating job status as we go.
-    Uses thread-safe job updates and broadcasts events to SSE clients.
 
-    Implements caption-first strategy: tries YouTube auto-captions first,
-    falls back to audio transcription if captions are unavailable.
+    This is a thin wrapper around process_video() from pipeline_service that:
+    - Runs the synchronous pipeline in a thread pool executor
+    - Translates progress callbacks to SSE broadcasts
     """
     config = load_config()
-    output_dir = config.get('output_dir', './output')
-
-    # Get transcription configuration
-    transcription_engine = config.get('transcription_engine', 'auto')
-    mlx_model = config.get('mlx_whisper_model', 'large-v3-turbo')
-    caption_language = config.get('caption_language', 'en')
-
     loop = asyncio.get_running_loop()
-    audio_dir = os.path.join(output_dir, "audio")
-    downloader = VideoDownloader(output_dir=audio_dir)
 
-    audio_path = None  # Track if we downloaded audio (for cleanup)
-    segments = []
-    metadata = None
-    transcriber = None
+    def progress_callback(update: ProgressUpdate):
+        """Translate pipeline progress to job updates and SSE broadcasts."""
+        updates = {
+            'status': update.status,
+            'phase': update.phase,
+            'message': update.message,
+        }
+        if update.progress is not None:
+            updates['progress'] = update.progress
+        if update.metadata is not None:
+            updates['metadata'] = update.metadata
+        if update.status in ('complete', 'error'):
+            updates['completed_at'] = datetime.now().isoformat()
+
+        _update_and_broadcast(job_id, **updates)
+
+    def run_pipeline():
+        """Run the pipeline with progress callback."""
+        date_prefix = datetime.now().strftime('%Y-%m-%d')
+
+        result = process_video(
+            url=url,
+            llm_type=llm_type,
+            no_extract=not extract,
+            config=config,
+            progress_callback=progress_callback,
+            filename_prefix=date_prefix,
+        )
+        return result
 
     try:
-        # ----------------------------------------------------------------
-        # Step 1: Get transcript (captions-first if engine is 'auto')
-        # ----------------------------------------------------------------
+        result = await loop.run_in_executor(None, run_pipeline)
 
-        if transcription_engine == 'auto':
-            # Try captions first (faster, no audio download needed)
-            _update_and_broadcast(job_id,
-                status='downloading',
-                phase='download',
-                message='Checking for YouTube captions...',
-                progress=5
+        # Update job with final paths
+        final_updates = {}
+        if result.get('transcript_path'):
+            final_updates['transcript_path'] = result['transcript_path']
+        if result.get('summary_path'):
+            final_updates['summary_path'] = result['summary_path']
+
+        if result.get('success'):
+            final_updates.update(
+                status='complete',
+                phase='complete',
+                progress=100,
+                completed_at=datetime.now().isoformat()
+            )
+        elif result.get('error'):
+            final_updates.update(
+                status='error',
+                error=result['error'],
+                message=f"Error: {result['error']}",
+                completed_at=datetime.now().isoformat()
             )
 
-            try:
-                # Get metadata first
-                metadata = await loop.run_in_executor(
-                    None, downloader.get_video_info, url
-                )
-
-                job_metadata = {
-                    'title': metadata['title'],
-                    'author': metadata['author'],
-                    'date': metadata['upload_date'],
-                    'duration': format_duration(metadata['duration']),
-                    'url': metadata['url'],
-                }
-                _update_and_broadcast(job_id,
-                    metadata=job_metadata,
-                    message=f"Found: {metadata['title']}",
-                    progress=10
-                )
-
-                _update_and_broadcast(job_id,
-                    status='transcribing',
-                    phase='transcribing',
-                    message='Extracting YouTube captions...',
-                    progress=15
-                )
-
-                caption_transcriber = CaptionTranscriber(
-                    output_dir=output_dir,
-                    language=caption_language,
-                )
-
-                # Extract captions
-                segments = await loop.run_in_executor(
-                    None,
-                    lambda: caption_transcriber.transcribe(audio_path="", url=url)
-                )
-
-                transcriber = caption_transcriber
-                _update_and_broadcast(job_id,
-                    message=f'Captions extracted ({len(segments)} segments)',
-                    progress=70
-                )
-
-            except CaptionsUnavailableError as e:
-                # Fall back to audio transcription
-                _update_and_broadcast(job_id,
-                    status='downloading',
-                    phase='download',
-                    message='Captions unavailable, downloading audio...',
-                    progress=15
-                )
-
-                audio_path, metadata = await loop.run_in_executor(
-                    None, downloader.download_audio, url
-                )
-
-                job_metadata = {
-                    'title': metadata['title'],
-                    'author': metadata['author'],
-                    'date': metadata['upload_date'],
-                    'duration': format_duration(metadata['duration']),
-                    'url': metadata['url'],
-                }
-                _update_and_broadcast(job_id,
-                    metadata=job_metadata,
-                    message=f"Downloaded: {metadata['title']}",
-                    progress=20
-                )
-
-                # Use fallback engine
-                fallback_engine = config.get('caption_fallback_engine', 'mlx-whisper')
-                _update_and_broadcast(job_id,
-                    status='transcribing',
-                    phase='transcribing',
-                    message=f'Transcribing with {fallback_engine}...',
-                    progress=25
-                )
-
-                transcriber = get_transcriber(
-                    engine=fallback_engine,
-                    model=mlx_model,
-                )
-
-                def transcription_progress(current: int, total: int, message: str = None):
-                    if total > 0:
-                        pct = int(25 + (current / total) * 45)
-                        msg = message or f'Transcribing... ({current}/{total})'
-                    else:
-                        pct = 30
-                        msg = message or f'Transcribing with {transcriber.engine_name}...'
-                    _update_and_broadcast(job_id, progress=pct, message=msg)
-
-                segments = await loop.run_in_executor(
-                    None,
-                    lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
-                )
-
-                _update_and_broadcast(job_id,
-                    message=f'Transcription complete ({len(segments)} segments)',
-                    progress=70
-                )
-
-        else:
-            # Explicit engine specified
-            _update_and_broadcast(job_id,
-                status='downloading',
-                phase='download',
-                message='Fetching video metadata...',
-                progress=0
-            )
-
-            if transcription_engine == 'captions':
-                # Captions-only mode
-                metadata = await loop.run_in_executor(
-                    None, downloader.get_video_info, url
-                )
-
-                job_metadata = {
-                    'title': metadata['title'],
-                    'author': metadata['author'],
-                    'date': metadata['upload_date'],
-                    'duration': format_duration(metadata['duration']),
-                    'url': metadata['url'],
-                }
-                _update_and_broadcast(job_id,
-                    metadata=job_metadata,
-                    message=f"Found: {metadata['title']}",
-                    progress=10
-                )
-
-                _update_and_broadcast(job_id,
-                    status='transcribing',
-                    phase='transcribing',
-                    message='Extracting YouTube captions...',
-                    progress=15
-                )
-
-                transcriber = get_transcriber(
-                    engine='captions',
-                    output_dir=output_dir,
-                    language=caption_language,
-                )
-
-                segments = await loop.run_in_executor(
-                    None,
-                    lambda: transcriber.transcribe(audio_path="", url=url)
-                )
-
-                _update_and_broadcast(job_id,
-                    message=f'Captions extracted ({len(segments)} segments)',
-                    progress=70
-                )
-
-            else:
-                # Audio-based transcription
-                audio_path, metadata = await loop.run_in_executor(
-                    None, downloader.download_audio, url
-                )
-
-                job_metadata = {
-                    'title': metadata['title'],
-                    'author': metadata['author'],
-                    'date': metadata['upload_date'],
-                    'duration': format_duration(metadata['duration']),
-                    'url': metadata['url'],
-                }
-                _update_and_broadcast(job_id,
-                    metadata=job_metadata,
-                    message=f"Downloaded: {metadata['title']}",
-                    progress=20
-                )
-
-                _update_and_broadcast(job_id,
-                    status='transcribing',
-                    phase='transcribing',
-                    message='Initializing transcription...',
-                    progress=25
-                )
-
-                transcriber = get_transcriber(
-                    engine=transcription_engine,
-                    model=mlx_model,
-                )
-
-                def transcription_progress(current: int, total: int, message: str = None):
-                    if total > 0:
-                        pct = int(25 + (current / total) * 45)
-                        msg = message or f'Transcribing... ({current}/{total})'
-                    else:
-                        pct = 30
-                        msg = message or f'Transcribing with {transcriber.engine_name}...'
-                    _update_and_broadcast(job_id, progress=pct, message=msg)
-
-                _update_and_broadcast(job_id,
-                    message=f'Transcribing audio with {transcriber.engine_name}...',
-                    progress=30
-                )
-
-                segments = await loop.run_in_executor(
-                    None,
-                    lambda: transcriber.transcribe(audio_path, progress_callback=transcription_progress)
-                )
-
-                _update_and_broadcast(job_id,
-                    message=f'Transcription complete ({len(segments)} segments)',
-                    progress=70
-                )
-
-        # ----------------------------------------------------------------
-        # Step 2: Save transcript
-        # ----------------------------------------------------------------
-        transcript_with_timestamps = transcriber.format_transcript(segments, include_timestamps=True)
-        transcript_content = create_transcript_markdown(metadata, transcript_with_timestamps)
-
-        date_prefix = datetime.now().strftime('%Y-%m-%d')
-        filename_base = f"{date_prefix} {sanitize_filename(metadata['title'])}"
-        transcript_output_dir = os.path.join(output_dir, "transcripts")
-        transcript_path = ensure_output_path(transcript_output_dir, f"{filename_base}-transcript.md")
-        with open(transcript_path, 'w', encoding='utf-8') as f:
-            f.write(transcript_content)
-
-        _update_and_broadcast(job_id,
-            transcript_path=str(transcript_path),
-            progress=70
-        )
-
-        # ----------------------------------------------------------------
-        # Step 3: Extract (optional)
-        # ----------------------------------------------------------------
-        if extract:
-            _update_and_broadcast(job_id,
-                status='extracting',
-                phase='extracting',
-                message=f'Sending to {llm_type.upper()} for analysis...',
-                progress=75
-            )
-
-            if llm_type == "claude":
-                api_key = config.get('anthropic_api_key')
-            else:
-                api_key = config.get('openai_api_key')
-
-            if api_key:
-                model_id = config.get('claude_model_id') if llm_type == "claude" else config.get('openai_model_id')
-                extractor = TranscriptExtractor(llm_type=llm_type, api_key=api_key, model_id=model_id)
-                full_text = transcriber.get_full_text(segments)
-
-                _update_and_broadcast(job_id,
-                    message='Extracting key insights...',
-                    progress=80
-                )
-
-                summary = await loop.run_in_executor(
-                    None, extractor.extract, full_text, metadata
-                )
-
-                summary_content = create_summary_markdown(metadata, summary)
-
-                summary_output_dir = os.path.join(output_dir, "summaries")
-                summary_path = ensure_output_path(summary_output_dir, f"{filename_base}-summary.md")
-                with open(summary_path, 'w', encoding='utf-8') as f:
-                    f.write(summary_content)
-
-                _update_and_broadcast(job_id,
-                    summary_path=str(summary_path),
-                    message='Extraction complete',
-                    progress=95
-                )
-            else:
-                _update_and_broadcast(job_id,
-                    message=f'Skipped extraction: {llm_type.upper()} API key not found',
-                    progress=95
-                )
-
-        # ----------------------------------------------------------------
-        # Cleanup and complete
-        # ----------------------------------------------------------------
-        if audio_path:
-            await loop.run_in_executor(None, downloader.cleanup_audio, audio_path)
-
-        _update_and_broadcast(job_id,
-            status='complete',
-            phase='complete',
-            message='Pipeline complete',
-            progress=100,
-            completed_at=datetime.now().isoformat()
-        )
+        if final_updates:
+            _update_and_broadcast(job_id, **final_updates)
 
     except Exception as e:
         _update_and_broadcast(job_id,

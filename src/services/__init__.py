@@ -9,7 +9,7 @@ from .markdown_service import (
     save_transcript_markdown,
     save_summary_markdown,
 )
-from .pipeline_service import process_video
+from .pipeline_service import process_video, ProgressUpdate, ProgressCallback
 
 __all__ = [
     # Markdown service
@@ -19,4 +19,6 @@ __all__ = [
     "save_summary_markdown",
     # Pipeline service
     "process_video",
+    "ProgressUpdate",
+    "ProgressCallback",
 ]

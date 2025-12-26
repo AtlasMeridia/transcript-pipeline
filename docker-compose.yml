@@ -21,6 +21,7 @@ services:
       # Transcription settings (whisper = local, elevenlabs = cloud)
       - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-whisper}
       - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+      - MLX_WHISPER_MODEL=${MLX_WHISPER_MODEL:-large-v3-turbo}
       - WHISPER_MODEL_DIR=/app/models
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}
@@ -68,6 +69,7 @@ services:
       # Transcription settings (whisper = local, elevenlabs = cloud)
       - TRANSCRIPTION_ENGINE=${TRANSCRIPTION_ENGINE:-whisper}
       - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+      - MLX_WHISPER_MODEL=${MLX_WHISPER_MODEL:-large-v3-turbo}
       - WHISPER_MODEL_DIR=/app/models
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - SCRIBE_MODEL_ID=${SCRIBE_MODEL_ID:-scribe_v2}

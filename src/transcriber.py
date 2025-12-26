@@ -84,13 +84,17 @@ class MLXWhisperTranscriber(BaseTranscriber):
     """
 
     # Available models from mlx-community on Hugging Face
+    # Note: MLX Whisper models use different naming conventions:
+    # - Older models: whisper-{size}-mlx (e.g., whisper-small-mlx)
+    # - Newer models: whisper-{size}-fp16 (e.g., whisper-small-fp16)
+    # - Large models: whisper-large-v3-mlx or whisper-large-v3-turbo
     MODELS = {
-        "tiny": "mlx-community/whisper-tiny",
-        "base": "mlx-community/whisper-base",
-        "small": "mlx-community/whisper-small",
-        "medium": "mlx-community/whisper-medium",
-        "large": "mlx-community/whisper-large-v3",
-        "large-v3": "mlx-community/whisper-large-v3",
+        "tiny": "mlx-community/whisper-tiny-mlx",
+        "base": "mlx-community/whisper-base-mlx",
+        "small": "mlx-community/whisper-small-mlx",
+        "medium": "mlx-community/whisper-medium-mlx",
+        "large": "mlx-community/whisper-large-v3-mlx",
+        "large-v3": "mlx-community/whisper-large-v3-mlx",
         "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
         "distil-large-v3": "mlx-community/distil-whisper-large-v3",
     }

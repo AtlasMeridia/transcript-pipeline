@@ -5,14 +5,17 @@ Provides REST API endpoints with Server-Sent Events for real-time progress.
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, AsyncGenerator, Set
 import io
+
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -63,6 +66,10 @@ jobs_lock = threading.RLock()
 job_event_queues: Dict[str, Set[asyncio.Queue]] = {}
 queues_lock = threading.Lock()
 
+# Job TTL configuration
+COMPLETED_JOB_TTL_HOURS = int(os.getenv("JOB_TTL_HOURS", "24"))
+JOB_CLEANUP_INTERVAL_MINUTES = 30
+
 
 # ============================================================================
 # Models
@@ -112,6 +119,58 @@ def update_job(job_id: str, **updates) -> Optional[dict]:
             return None
         jobs[job_id].update(updates)
         return jobs[job_id].copy()
+
+
+# ============================================================================
+# Job TTL Cleanup
+# ============================================================================
+
+def cleanup_expired_jobs() -> int:
+    """
+    Remove completed/errored jobs older than TTL.
+    Returns number of jobs removed.
+    """
+    if COMPLETED_JOB_TTL_HOURS <= 0:
+        return 0  # TTL disabled
+
+    cutoff = datetime.now() - timedelta(hours=COMPLETED_JOB_TTL_HOURS)
+    expired_ids = []
+
+    with jobs_lock:
+        for job_id, job in jobs.items():
+            # Only clean up terminal states
+            if job.get('status') not in ('complete', 'error'):
+                continue
+
+            # Check completed_at timestamp
+            completed_at = job.get('completed_at')
+            if completed_at:
+                try:
+                    completed_time = datetime.fromisoformat(completed_at)
+                    if completed_time < cutoff:
+                        expired_ids.append(job_id)
+                except (ValueError, TypeError):
+                    pass  # Invalid timestamp, skip
+
+        # Remove expired jobs
+        for job_id in expired_ids:
+            del jobs[job_id]
+
+    if expired_ids:
+        logger.info(f"Cleaned up {len(expired_ids)} expired jobs (TTL: {COMPLETED_JOB_TTL_HOURS}h)")
+
+    return len(expired_ids)
+
+
+async def job_cleanup_task():
+    """Background task that periodically cleans up expired jobs."""
+    logger.info(f"Job cleanup task started (interval: {JOB_CLEANUP_INTERVAL_MINUTES}m, TTL: {COMPLETED_JOB_TTL_HOURS}h)")
+    while True:
+        await asyncio.sleep(JOB_CLEANUP_INTERVAL_MINUTES * 60)
+        try:
+            cleanup_expired_jobs()
+        except Exception as e:
+            logger.error(f"Job cleanup error: {e}")
 
 
 # ============================================================================
@@ -245,6 +304,16 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
 
 # ============================================================================
+# Application Lifecycle
+# ============================================================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks on application startup."""
+    asyncio.create_task(job_cleanup_task())
+
+
+# ============================================================================
 # API Endpoints
 # ============================================================================
 
@@ -260,10 +329,23 @@ async def root():
 @app.get("/api/health")
 async def health():
     """Health check endpoint."""
+    with jobs_lock:
+        job_count = len(jobs)
+        completed_count = sum(1 for j in jobs.values() if j.get('status') == 'complete')
+        error_count = sum(1 for j in jobs.values() if j.get('status') == 'error')
+        active_count = job_count - completed_count - error_count
+
     return {
         "service": "Transcript Pipeline API",
         "version": "1.0.0",
-        "status": "healthy"
+        "status": "healthy",
+        "jobs": {
+            "total": job_count,
+            "active": active_count,
+            "completed": completed_count,
+            "errored": error_count,
+        },
+        "job_ttl_hours": COMPLETED_JOB_TTL_HOURS,
     }
 
 

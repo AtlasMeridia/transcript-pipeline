@@ -7,6 +7,9 @@ from anthropic import Anthropic
 from openai import OpenAI
 
 from .utils import retry_with_backoff
+from anthropic import APIError, APIConnectionError, RateLimitError, APITimeoutError
+from openai import OpenAIError, APIConnectionError as OpenAIConnectionError, RateLimitError as OpenAIRateLimitError
+
 from .config import (
     DEFAULT_CLAUDE_MODEL,
     DEFAULT_GPT_MODEL,
@@ -14,6 +17,7 @@ from .config import (
     MAX_CHARS_PER_CHUNK,
     MAX_TOKENS_OUTPUT,
     GPT_TEMPERATURE,
+    API_TIMEOUT_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
@@ -218,32 +222,33 @@ Part summaries:
             Extracted information
 
         Raises:
-            Exception: If API call fails
+            Exception: If API call fails after retries
         """
+        logger.info("Extracting key information with Claude...")
+
+        def call_claude():
+            response = self.client.messages.create(
+                model=self.model_id,
+                max_tokens=MAX_TOKENS_OUTPUT,
+                timeout=API_TIMEOUT_SECONDS,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            return response.content[0].text
+
         try:
-            logger.info("Extracting key information with Claude...")
-
-            def call_claude():
-                response = self.client.messages.create(
-                    model=self.model_id,
-                    max_tokens=MAX_TOKENS_OUTPUT,
-                    messages=[{
-                        "role": "user",
-                        "content": prompt
-                    }]
-                )
-                return response.content[0].text
-
             result = retry_with_backoff(
                 call_claude,
                 max_retries=3,
-                exceptions=(Exception,)
+                exceptions=(APIError, APIConnectionError, RateLimitError, APITimeoutError)
             )
 
             logger.info("Extraction with Claude complete")
             return result
 
-        except Exception as e:
+        except (APIError, APIConnectionError, RateLimitError, APITimeoutError) as e:
             raise Exception(f"Claude extraction failed: {str(e)}")
 
     def _extract_with_gpt(self, prompt: str) -> str:
@@ -257,36 +262,37 @@ Part summaries:
             Extracted information
 
         Raises:
-            Exception: If API call fails
+            Exception: If API call fails after retries
         """
+        logger.info("Extracting key information with GPT...")
+
+        def call_gpt():
+            response = self.client.chat.completions.create(
+                model=self.model_id,
+                messages=[{
+                    "role": "system",
+                    "content": "You are a helpful assistant that extracts key information from video transcripts."
+                }, {
+                    "role": "user",
+                    "content": prompt
+                }],
+                max_tokens=MAX_TOKENS_OUTPUT,
+                temperature=GPT_TEMPERATURE,
+                timeout=API_TIMEOUT_SECONDS,
+            )
+            return response.choices[0].message.content
+
         try:
-            logger.info("Extracting key information with GPT...")
-
-            def call_gpt():
-                response = self.client.chat.completions.create(
-                    model=self.model_id,
-                    messages=[{
-                        "role": "system",
-                        "content": "You are a helpful assistant that extracts key information from video transcripts."
-                    }, {
-                        "role": "user",
-                        "content": prompt
-                    }],
-                    max_tokens=MAX_TOKENS_OUTPUT,
-                    temperature=GPT_TEMPERATURE,
-                )
-                return response.choices[0].message.content
-
             result = retry_with_backoff(
                 call_gpt,
                 max_retries=3,
-                exceptions=(Exception,)
+                exceptions=(OpenAIError, OpenAIConnectionError, OpenAIRateLimitError)
             )
 
             logger.info("Extraction with GPT complete")
             return result
 
-        except Exception as e:
+        except (OpenAIError, OpenAIConnectionError, OpenAIRateLimitError) as e:
             raise Exception(f"GPT extraction failed: {str(e)}")
 
 

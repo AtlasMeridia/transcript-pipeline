@@ -1,15 +1,15 @@
 # Core dependencies
-yt-dlp>=2024.0.0
-anthropic>=0.18.0
-openai>=1.0.0
-python-dotenv>=1.0.0
+yt-dlp==2025.5.22
+anthropic==0.75.0
+openai==1.95.0
+python-dotenv==1.1.1
 
 # API server dependencies
-fastapi>=0.109.0
-uvicorn[standard]>=0.27.0
-pydantic>=2.0.0
+fastapi==0.123.0
+uvicorn[standard]==0.35.0
+pydantic==2.11.7
 
 # Development
-pytest>=8.0.0
+pytest==9.0.1
 
 # Note: For local Whisper transcription, see requirements-local.txt

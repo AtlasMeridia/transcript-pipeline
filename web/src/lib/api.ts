@@ -29,28 +29,59 @@ class ApiError extends Error {
   }
 }
 
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000;
+const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+
+async function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function fetchApi<T>(
   endpoint: string,
   options?: RequestInit
 ): Promise<T> {
   const url = `${getApiBaseUrl()}${endpoint}`;
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-  });
 
-  if (!response.ok) {
-    throw new ApiError(
-      `API request failed: ${response.statusText}`,
-      response.status,
-      response
-    );
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+      });
+
+      if (!response.ok) {
+        // Only retry on specific status codes
+        if (RETRYABLE_STATUS_CODES.includes(response.status) && attempt < MAX_RETRIES) {
+          const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+          await sleep(delay);
+          continue;
+        }
+
+        throw new ApiError(
+          `API request failed: ${response.statusText}`,
+          response.status,
+          response
+        );
+      }
+
+      return response.json();
+    } catch (error) {
+      // Retry on network errors (TypeError from fetch)
+      if (error instanceof TypeError && attempt < MAX_RETRIES) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, attempt);
+        await sleep(delay);
+        continue;
+      }
+      // Re-throw ApiError or other errors
+      throw error;
+    }
   }
 
-  return response.json();
+  throw new ApiError('Max retries exceeded', undefined, undefined);
 }
 
 export const api = {

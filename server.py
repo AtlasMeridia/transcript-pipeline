@@ -10,6 +10,7 @@ import os
 import sys
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Optional, AsyncGenerator, Set
@@ -17,11 +18,13 @@ import io
 
 logger = logging.getLogger(__name__)
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from collections import defaultdict
+import time
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -34,10 +37,37 @@ from src.services import process_video, ProgressUpdate
 # App Configuration
 # ============================================================================
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for startup and shutdown events."""
+    # Startup: Start background tasks
+    asyncio.create_task(job_cleanup_task())
+    logger.info("Transcript Pipeline API started")
+    yield
+    # Shutdown: cleanup if needed
+    logger.info("Transcript Pipeline API shutting down")
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Transcript Pipeline API",
-    description="Extract transcripts and insights from YouTube videos",
-    version="1.0.0"
+    description="""
+## Overview
+Extract transcripts and AI-powered insights from YouTube videos.
+
+## Features
+- Download and transcribe YouTube videos using YouTube captions or MLX Whisper
+- Extract key insights using Claude or GPT
+- Real-time progress via Server-Sent Events
+- Download transcripts and summaries as Markdown
+
+## Authentication
+No authentication required for local development.
+Configure CORS_ORIGINS for production deployment.
+    """,
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS for frontend
@@ -58,6 +88,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting configuration
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "30"))  # requests per minute
+RATE_LIMIT_WINDOW = 60  # seconds
+request_timestamps: Dict[str, list] = defaultdict(list)
+rate_limit_lock = threading.Lock()
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Simple rate limiting middleware."""
+    # Skip rate limiting for health checks and static files
+    if request.url.path in ("/api/health", "/", "/docs", "/redoc", "/openapi.json"):
+        return await call_next(request)
+
+    client_ip = request.client.host if request.client else "unknown"
+    now = time.time()
+
+    with rate_limit_lock:
+        # Clean old timestamps
+        request_timestamps[client_ip] = [
+            ts for ts in request_timestamps[client_ip]
+            if now - ts < RATE_LIMIT_WINDOW
+        ]
+
+        # Check rate limit
+        if len(request_timestamps[client_ip]) >= RATE_LIMIT_REQUESTS:
+            return JSONResponse(
+                status_code=429,
+                content={"error": "Rate limit exceeded. Please try again later."}
+            )
+
+        # Record this request
+        request_timestamps[client_ip].append(now)
+
+    return await call_next(request)
+
+
 # In-memory job storage with thread-safe access
 jobs: Dict[str, dict] = {}
 jobs_lock = threading.RLock()
@@ -76,9 +143,9 @@ JOB_CLEANUP_INTERVAL_MINUTES = 30
 # ============================================================================
 
 class ProcessRequest(BaseModel):
-    url: str
-    llm_type: Optional[str] = None
-    extract: bool = True
+    url: str = Field(..., description="YouTube video URL", json_schema_extra={"example": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"})
+    llm_type: Optional[str] = Field(None, description="LLM to use: 'claude' or 'gpt'", json_schema_extra={"example": "claude"})
+    extract: bool = Field(True, description="Whether to run AI extraction on transcript")
 
 
 class JobStatus(BaseModel):
@@ -304,20 +371,10 @@ async def process_video_async(job_id: str, url: str, llm_type: str, extract: boo
 
 
 # ============================================================================
-# Application Lifecycle
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Start background tasks on application startup."""
-    asyncio.create_task(job_cleanup_task())
-
-
-# ============================================================================
 # API Endpoints
 # ============================================================================
 
-@app.get("/")
+@app.get("/", tags=["Frontend"])
 async def root():
     """Serve the frontend HTML."""
     frontend_path = Path(__file__).parent / "frontend" / "index.html"
@@ -326,7 +383,7 @@ async def root():
     return {"error": "Frontend not found"}
 
 
-@app.get("/api/health")
+@app.get("/api/health", tags=["System"])
 async def health():
     """Health check endpoint."""
     with jobs_lock:
@@ -349,7 +406,7 @@ async def health():
     }
 
 
-@app.post("/api/process", response_model=JobStatus)
+@app.post("/api/process", response_model=JobStatus, tags=["Jobs"])
 async def start_processing(request: ProcessRequest, background_tasks: BackgroundTasks):
     """
     Start processing a YouTube video.
@@ -389,7 +446,7 @@ async def start_processing(request: ProcessRequest, background_tasks: Background
     return JobStatus(**job)
 
 
-@app.get("/api/jobs/{job_id}", response_model=JobStatus)
+@app.get("/api/jobs/{job_id}", response_model=JobStatus, tags=["Jobs"])
 async def get_job_status(job_id: str):
     """Get the current status of a processing job."""
     job = get_job(job_id)
@@ -398,7 +455,7 @@ async def get_job_status(job_id: str):
     return JobStatus(**job)
 
 
-@app.get("/api/jobs/{job_id}/stream")
+@app.get("/api/jobs/{job_id}/stream", tags=["Jobs"])
 async def stream_job_status(job_id: str):
     """
     Stream job status updates via Server-Sent Events.
@@ -456,7 +513,7 @@ async def stream_job_status(job_id: str):
     )
 
 
-@app.get("/api/jobs/{job_id}/transcript")
+@app.get("/api/jobs/{job_id}/transcript", tags=["Jobs"])
 async def get_transcript(job_id: str):
     """Get the transcript content for a completed job.
 
@@ -482,7 +539,7 @@ async def get_transcript(job_id: str):
     }
 
 
-@app.get("/api/jobs/{job_id}/summary")
+@app.get("/api/jobs/{job_id}/summary", tags=["Jobs"])
 async def get_summary(job_id: str):
     """Get the summary content for a completed job.
 
@@ -508,7 +565,7 @@ async def get_summary(job_id: str):
     }
 
 
-@app.get("/api/jobs/{job_id}/download/{file_type}")
+@app.get("/api/jobs/{job_id}/download/{file_type}", tags=["Jobs"])
 async def download_file(job_id: str, file_type: str):
     """Download the transcript or summary file."""
     job = get_job(job_id)
@@ -532,7 +589,7 @@ async def download_file(job_id: str, file_type: str):
     )
 
 
-@app.get("/api/config")
+@app.get("/api/config", tags=["System"])
 async def get_config():
     """Get current pipeline configuration (without sensitive data)."""
     config = load_config()

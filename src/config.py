@@ -33,6 +33,7 @@ DEFAULT_CAPTION_FALLBACK_ENGINE = "mlx-whisper"  # Engine to use when captions u
 MAX_CHARS_PER_CHUNK = 8000  # Character budget per chunk for LLM context
 MAX_TOKENS_OUTPUT = 4000  # Max tokens for LLM response
 GPT_TEMPERATURE = 0.3  # Temperature for GPT completions
+API_TIMEOUT_SECONDS = 120  # Timeout for LLM API calls (2 minutes)
 
 # LLM Models
 DEFAULT_CLAUDE_MODEL = "claude-sonnet-4-5"

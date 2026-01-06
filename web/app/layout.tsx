@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Cormorant_Garamond, Lora, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/src/lib/providers";
+import { ErrorBoundary } from '@/src/components/ErrorBoundary';
 
 const dmSans = DM_Sans({
   variable: "--font-sans",
@@ -45,7 +46,9 @@ export default function RootLayout({
       <body
         className={`${dmSans.variable} ${cormorantGaramond.variable} ${lora.variable} ${ibmPlexMono.variable} antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <ErrorBoundary>{children}</ErrorBoundary>
+        </Providers>
       </body>
     </html>
   );

@@ -26,7 +26,7 @@ export function VideoUrlInput({ onProcess, isProcessing }: VideoUrlInputProps) {
   };
 
   return (
-    <section className="mb-10">
+    <section className="mb-10 max-w-2xl mx-auto">
       <label className="font-mono text-[0.6875rem] uppercase tracking-wider text-[var(--text-muted)] mb-2 block">
         YouTube URL
       </label>

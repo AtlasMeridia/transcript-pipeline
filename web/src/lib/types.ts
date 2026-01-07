@@ -8,10 +8,10 @@ export type JobStatus =
   | 'complete'
   | 'error';
 
-export type Phase = 
+export type Phase =
   | 'download'
-  | 'transcribing'
-  | 'extracting'
+  | 'transcribe'
+  | 'extract'
   | 'complete';
 
 export type LLMType = 'claude' | 'gpt';

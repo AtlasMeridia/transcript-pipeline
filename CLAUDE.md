@@ -12,33 +12,43 @@ A CLI and Web API tool that downloads YouTube videos, transcribes them using Whi
 
 **Python Version Requirement**: Use Python 3.11 - 3.13. A `.python-version` file is included.
 
-### Docker (Recommended)
+### Local Development (Recommended)
+
+Running natively on macOS is recommended for the best transcription experience with MLX Whisper on Apple Silicon.
+
 ```bash
-# Build the image
-docker-compose build
-
-# Process a video (CLI mode)
-docker-compose run --rm transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
-
-# With options
-docker-compose run --rm transcript-pipeline URL --llm gpt --no-extract
-
-# Run backend API server (port 8000)
-docker-compose up transcript-api
-
-# Build with local Whisper transcription (one-time, adds ~2GB to image)
-docker-compose build --build-arg INSTALL_WHISPER=true transcript-api
+# Quick start - runs the backend with all dependencies
+./start-local.sh
 ```
 
-**Note**: The default Docker image uses ElevenLabs (cloud) for transcription. To use local Whisper transcription, you must rebuild with `INSTALL_WHISPER=true`. This only needs to be done once - the setting persists in the built image.
+The `start-local.sh` script automatically:
+- Creates a Python virtual environment (`.venv/`)
+- Installs all dependencies including mlx-whisper
+- Starts the FastAPI server on port 8000 with hot-reload
+
+For manual setup or more control:
+```bash
+# Create virtual environment
+python3 -m venv .venv && source .venv/bin/activate
+
+# Install dependencies (includes mlx-whisper for Apple Silicon)
+pip install -r requirements-local.txt
+
+# Run API server
+python -m uvicorn server:app --host 0.0.0.0 --port 8000 --reload
+
+# Run CLI directly
+python -m src.main https://www.youtube.com/watch?v=VIDEO_ID
+
+# Run tests
+pytest
+```
 
 ### Running the Full Stack (Frontend + Backend)
 
-To run the complete web application locally:
-
 ```bash
-# Terminal 1: Start the backend API (Docker)
-docker-compose up transcript-api
+# Terminal 1: Start the backend
+./start-local.sh
 
 # Terminal 2: Start the frontend (Next.js)
 cd web
@@ -52,24 +62,21 @@ Then open http://localhost:3000 in your browser.
 ```
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
-This tells the Next.js frontend where to find the backend API.
 
-### Local Python
+### Docker (Alternative)
+
+Docker is available for deployment or environments where local Python isn't preferred. Note that **MLX Whisper cannot run in Docker** (requires Apple Metal GPU access).
+
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Build and run API server
+docker-compose build
+docker-compose up transcript-api
 
-# Run the CLI
-python -m src.main https://www.youtube.com/watch?v=VIDEO_ID
-
-# Run API server
-python server.py
-
-# Run tests
-pytest
-pytest tests/test_utils.py -v
-pytest tests/test_transcriber_scribe_parsing.py -v
+# CLI mode
+docker-compose run --rm --profile cli transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
 ```
+
+The Docker image supports YouTube caption extraction and cloud transcription (ElevenLabs) but not local MLX Whisper transcription.
 
 ## Architecture
 

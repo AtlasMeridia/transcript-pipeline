@@ -7,13 +7,13 @@ interface ProcessingStatusProps {
   job: Job | null;
 }
 
-const phases: Phase[] = ['download', 'transcribing', 'extracting', 'complete'];
+const phases: Phase[] = ['download', 'transcribe', 'extract', 'complete'];
 
 function getPhaseDisplayName(phase: Phase | null): string {
   const names: Record<Phase, string> = {
     download: 'Downloading',
-    transcribing: 'Transcribing',
-    extracting: 'Summarizing',
+    transcribe: 'Transcribing',
+    extract: 'Summarizing',
     complete: 'Complete',
   };
   return phase ? names[phase] : 'Starting';
@@ -31,7 +31,7 @@ function getStatusMessage(phase: Phase | null, rawMessage: string | null): strin
         { match: /fetch/i, message: 'Fetching video details...' },
       ],
     },
-    transcribing: {
+    transcribe: {
       default: 'Converting speech to text...',
       patterns: [
         { match: /mlx/i, message: 'Transcribing with MLX Whisper...' },
@@ -41,7 +41,7 @@ function getStatusMessage(phase: Phase | null, rawMessage: string | null): strin
         { match: /progress|%/i, message: 'Transcribing speech to text...' },
       ],
     },
-    extracting: {
+    extract: {
       default: 'Generating insights with AI...',
       patterns: [
         { match: /claude/i, message: 'Analyzing content with Claude AI...' },

@@ -1,29 +1,30 @@
 # Transcript Pipeline
 
-A Dockerized Python tool that transcribes YouTube videos and extracts key information using AI. Available as both a **CLI tool** and a **web interface** with REST API.
+A Python tool that transcribes YouTube videos and extracts key information using AI. Available as both a **CLI tool** and a **web interface** with REST API.
 
 ## Features
 
 - **Dual Interface**: Command-line tool and web-based UI with REST API
-- **Flexible Transcription**: Choose between [OpenAI Whisper](https://github.com/openai/whisper) (local) or [ElevenLabs Scribe v2](https://elevenlabs.io/blog/introducing-scribe-v2-realtime) (cloud)
-- **Chunked Processing**: Handles long videos with intelligent chunking and overlap
-- **AI Extraction**: Extracts key insights using Claude or GPT with hierarchical summarization for long content
+- **Fast Local Transcription**: [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) optimized for Apple Silicon (5-10x faster than standard Whisper)
+- **YouTube Captions**: Extract auto-generated captions when available (fastest option)
+- **AI Extraction**: Extracts key insights using Claude or GPT with hierarchical summarization
 - **Real-time Progress**: Web interface shows live progress via Server-Sent Events
-- **Fully Containerized**: Easy Docker deployment with both CLI and API modes
+- **One-Command Setup**: `./start-local.sh` handles environment setup and dependencies
 - **Library-style API**: `process_video()` can be imported and reused programmatically
 
 ## Project Structure
 
 ```
 transcript-pipeline/
-├── Dockerfile              # Docker image configuration
-├── docker-compose.yml      # Docker Compose setup (API + CLI services)
-├── requirements.txt        # Python dependencies
+├── start-local.sh          # One-command local setup and run script
+├── requirements-local.txt  # Python dependencies (with MLX Whisper)
+├── requirements.txt        # Minimal dependencies (for Docker/cloud)
 ├── server.py               # FastAPI web server with SSE streaming
-├── entrypoint.sh           # Docker CLI entrypoint with validation
 ├── .env.example            # Environment variables template
 ├── README.md               # This file
 ├── CLAUDE.md               # Claude Code guidance
+├── Dockerfile              # Docker image configuration (alternative)
+├── docker-compose.yml      # Docker Compose setup (alternative)
 ├── src/
 │   ├── __init__.py
 │   ├── main.py             # CLI entry point (thin wrapper)
@@ -53,21 +54,37 @@ transcript-pipeline/
 
 ## Prerequisites
 
-- Docker and Docker Compose
-- (Optional for local run) Python 3.11 - 3.13 (Python 3.14+ not supported)
-- API key for Claude (Anthropic) or GPT (OpenAI)
-- **For local transcription**: No additional API keys needed (uses Whisper)
-- **For cloud transcription**: ElevenLabs API key for Scribe v2
+- **macOS with Apple Silicon** (M1/M2/M3/M4) - recommended for MLX Whisper
+- **Python 3.11 - 3.13** (Python 3.14+ not supported)
+- **ffmpeg** - for audio processing (`brew install ffmpeg`)
+- **API key** for Claude (Anthropic) or GPT (OpenAI) - for AI extraction
+
+**Note**: Docker is available as an alternative but does not support MLX Whisper (local transcription). Use Docker for deployment or non-macOS environments.
+
+## Quick Start
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY (or OPENAI_API_KEY)
+
+# 2. Start the backend (installs dependencies automatically)
+./start-local.sh
+
+# 3. In another terminal, start the frontend
+cd web && npm install && npm run dev
+
+# 4. Open http://localhost:3000
+```
+
+The `start-local.sh` script automatically:
+- Creates a Python virtual environment (`.venv/`)
+- Installs all dependencies including MLX Whisper
+- Starts the FastAPI server on port 8000 with hot-reload
 
 ## Setup
 
-### 1. Clone or Copy the Project
-
-```bash
-cd transcript-pipeline
-```
-
-### 2. Configure Environment Variables
+### 1. Configure Environment Variables
 
 Copy the example environment file and add your API keys:
 
@@ -75,120 +92,77 @@ Copy the example environment file and add your API keys:
 cp .env.example .env
 ```
 
-Edit `.env` and add your API keys (see `.env.example` for all available options):
+Edit `.env` with your settings:
 
 ```bash
-# Transcription Engine: 'whisper' (local) or 'elevenlabs' (cloud)
-# Default: whisper
-TRANSCRIPTION_ENGINE=whisper
+# Transcription Engine: 'auto', 'mlx-whisper', or 'captions'
+# - auto: Try YouTube captions first, fall back to MLX Whisper (recommended)
+# - mlx-whisper: Always use local transcription
+# - captions: Only use YouTube captions
+TRANSCRIPTION_ENGINE=auto
 
-# Whisper Configuration (for local transcription)
-WHISPER_MODEL=large-v3  # Options: tiny, base, small, medium, large, large-v2, large-v3
-# WHISPER_MODEL_DIR=/path/to/models  # Optional: custom model cache directory
+# MLX Whisper model (when using mlx-whisper)
+# Options: tiny, base, small, medium, large, large-v3, large-v3-turbo, distil-large-v3
+MLX_WHISPER_MODEL=large-v3-turbo
 
-# ElevenLabs Configuration (for cloud transcription)
-# Required only if TRANSCRIPTION_ENGINE=elevenlabs
-ELEVENLABS_API_KEY=your_elevenlabs_key_here
-# SCRIBE_MODEL_ID=scribe_v2
+# LLM for AI extraction (required)
+ANTHROPIC_API_KEY=your_anthropic_key_here  # For Claude (recommended)
+# OPENAI_API_KEY=your_openai_key_here       # For GPT (alternative)
 
-# LLM for AI extraction
-# Use Claude (recommended)
-ANTHROPIC_API_KEY=your_anthropic_key_here
-
-# OR use GPT
-# OPENAI_API_KEY=your_openai_key_here
-
-# Default LLM for extraction (claude or gpt)
 DEFAULT_LLM=claude
-
-# Optional overrides for specific model versions
-# CLAUDE_MODEL_ID=claude-sonnet-4-5
-# OPENAI_MODEL_ID=gpt-4o-mini
 ```
 
-### 3. Build the Docker Image
+See `.env.example` for all available options.
+
+### 2. Start the Application
 
 ```bash
-# Standard build (ElevenLabs cloud transcription - lean image for Railway)
-docker-compose build
+# Start backend
+./start-local.sh
 
-# With Whisper support (local transcription - larger image)
-docker-compose build --build-arg INSTALL_WHISPER=true
+# In another terminal, start frontend
+cd web && npm run dev
 ```
-
-This will:
-- Install all system dependencies (ffmpeg, etc.)
-- Install Python packages
-- Optionally install Whisper dependencies (~2GB additional)
-- Set up the environment
 
 ## Usage
 
-### Web Interface (Recommended for Interactive Use)
+### Web Interface (Recommended)
 
-Start the API server:
-
-```bash
-docker-compose up transcript-api
-```
-
-The API will be available at `http://localhost:8000`
-
-Open the web interface:
-- Option 1: Open `frontend/index.html` directly in your browser
-- Option 2: Serve it with a static server:
-  ```bash
-  cd frontend && python -m http.server 3000
-  # Then open http://localhost:3000
-  ```
-
-The web interface provides:
+The web interface at `http://localhost:3000` provides:
 - Real-time progress updates via Server-Sent Events
-- Interactive job management
+- Model selection (MLX Whisper sizes)
 - Direct download of transcripts and summaries
-- Configuration display
+- Activity log with detailed status
 
 ### CLI Mode
 
-Process a single YouTube video via command line:
+Process videos directly from the command line:
 
 ```bash
-docker-compose run --rm --profile cli transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
-```
+# Activate the virtual environment first
+source .venv/bin/activate
 
-> **Note**: The `--profile cli` flag is required for CLI mode. Without it, docker-compose will try to start the API server.
-
-> The CLI streams audio to ElevenLabs Scribe v2 Realtime when `ELEVENLABS_API_KEY` is configured.
-
-With custom options:
-
-```bash
-# Use GPT instead of Claude
-docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --llm gpt
-
-# Only transcribe (skip AI extraction)
-docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --no-extract
-
-# Custom output directory
-docker-compose run --rm --profile cli transcript-pipeline https://youtu.be/VIDEO_ID --output-dir /app/output/my-folder
-```
-
-### Local Python (Alternative)
-
-If you prefer to run without Docker:
-
-```bash
-# Install dependencies (ElevenLabs cloud transcription only)
-pip install -r requirements.txt
-
-# OR install with Whisper support (local transcription)
-pip install -r requirements-local.txt
-
-# Run CLI
+# Process a video
 python -m src.main https://www.youtube.com/watch?v=VIDEO_ID
 
-# Run API server
-python -m uvicorn server:app --host 0.0.0.0 --port 8000
+# Use GPT instead of Claude
+python -m src.main https://youtu.be/VIDEO_ID --llm gpt
+
+# Only transcribe (skip AI extraction)
+python -m src.main https://youtu.be/VIDEO_ID --no-extract
+```
+
+### Docker (Alternative)
+
+For deployment or non-macOS environments. Note: MLX Whisper is not available in Docker.
+
+```bash
+# Build and start API server
+docker-compose build
+docker-compose up transcript-api
+
+# CLI mode
+docker-compose run --rm --profile cli transcript-pipeline https://www.youtube.com/watch?v=VIDEO_ID
 ```
 
 ### REST API
@@ -329,67 +303,28 @@ Optional arguments:
   --no-extract         Skip extraction, only transcribe
 ```
 
-## Docker Services
+## Docker Deployment
 
-The `docker-compose.yml` provides two services:
-
-1. **`transcript-api`** (default): Runs the FastAPI web server on port 8000
-   ```bash
-   docker-compose up transcript-api
-   ```
-
-2. **`transcript-pipeline`** (CLI profile): Command-line interface
-   ```bash
-   docker-compose run --rm --profile cli transcript-pipeline <url>
-   ```
-
-Both services share the same Docker image and environment variables.
-
-## Transporting Between Systems
-
-### Export the Docker Image
-
-On the source system:
+Docker is available for deployment to cloud platforms or non-macOS environments. The Docker image supports YouTube caption extraction but not MLX Whisper (local transcription).
 
 ```bash
-# Save the image to a tar file
-docker save transcript-pipeline:latest -o transcript-pipeline.tar
-
-# Copy the tar file to your target system
-```
-
-On the target system:
-
-```bash
-# Load the image
-docker load -i transcript-pipeline.tar
-
-# Copy the project files
-# Make sure to include:
-# - docker-compose.yml
-# - .env (with your API keys)
-# - models/ directory (optional, saves re-download time)
-
-# Run API server
-docker-compose up transcript-api
-
-# Or run CLI
-docker-compose run --rm --profile cli transcript-pipeline <youtube-url>
-```
-
-### Or Use Docker Hub
-
-```bash
-# Tag and push (on source system)
-docker tag transcript-pipeline:latest yourusername/transcript-pipeline:latest
-docker push yourusername/transcript-pipeline:latest
-
-# Pull and run (on target system)
-docker pull yourusername/transcript-pipeline:latest
+# Build and run
+docker-compose build
 docker-compose up transcript-api
 ```
+
+Services:
+- **`transcript-api`**: FastAPI web server on port 8000
+- **`transcript-pipeline`**: CLI mode (use `--profile cli`)
 
 ## Troubleshooting
+
+### "mlx-whisper is not installed"
+
+This error occurs when running in Docker. MLX Whisper requires Apple Silicon and cannot run in Docker containers. Solutions:
+
+1. **Run locally** (recommended): Use `./start-local.sh` instead of Docker
+2. **Use captions**: Set `TRANSCRIPTION_ENGINE=captions` in `.env` to use YouTube auto-captions
 
 ### "Video unavailable" or "Private video"
 
@@ -405,48 +340,35 @@ Try a different video URL.
 Make sure your `.env` file contains the correct API key:
 - `ANTHROPIC_API_KEY` for Claude
 - `OPENAI_API_KEY` for GPT
-- `ELEVENLABS_API_KEY` for Scribe
 
-See `.env.example` for a complete list of configuration options.
+### MLX Whisper model download slow
 
-### Whisper model download fails
+The first run downloads the model from Hugging Face. This is normal:
+- `small` model: ~500MB
+- `large-v3-turbo` model: ~1.5GB
 
-The first run downloads the Whisper model. If it fails:
-1. Check your internet connection
-2. Try a smaller model size: `--model tiny`
-3. Manually download and place in `./models/` directory
+Models are cached in `~/.cache/huggingface/` for future use.
 
 ### Out of memory errors
 
-If transcribing large videos:
-1. Use a smaller Whisper model: `--model tiny` or `--model base`
-2. Increase Docker memory allocation in Docker Desktop settings
+If transcribing large videos, use a smaller model:
+```bash
+MLX_WHISPER_MODEL=small  # In .env
+```
 
-### ElevenLabs API errors
+### ffmpeg not found
 
-If Scribe requests fail or you are offline:
-1. Confirm `ELEVENLABS_API_KEY` is present and valid.
-2. Check your ElevenLabs usage limits.
-3. Alternatively, switch to local Whisper transcription: `TRANSCRIPTION_ENGINE=whisper`
+Install ffmpeg (required for audio processing):
+```bash
+brew install ffmpeg
+```
 
 ### CORS errors in production
 
-If deploying the web interface, configure CORS origins via the `CORS_ORIGINS` environment variable:
-
+Configure CORS origins via the `CORS_ORIGINS` environment variable:
 ```bash
-# Allow specific origins (comma-separated)
-CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
-
-# Or allow all origins (development only, not recommended for production)
-CORS_ORIGINS=*
+CORS_ORIGINS=https://yourdomain.com
 ```
-
-### ffmpeg not found (local Python)
-
-Install ffmpeg:
-- **macOS**: `brew install ffmpeg`
-- **Ubuntu/Debian**: `apt-get install ffmpeg`
-- **Windows**: Download from https://ffmpeg.org/
 
 ## Advanced Usage
 
@@ -458,9 +380,10 @@ Create a script to process multiple videos:
 #!/bin/bash
 # process-videos.sh
 
+source .venv/bin/activate
 while IFS= read -r url; do
     echo "Processing: $url"
-    docker-compose run --rm --profile cli transcript-pipeline "$url"
+    python -m src.main "$url"
 done < video-urls.txt
 ```
 
@@ -531,24 +454,25 @@ Contributions welcome! Please test thoroughly before submitting pull requests.
 Run the test suite:
 
 ```bash
-# With Docker (run pytest in the container)
-docker-compose run --rm --profile cli transcript-pipeline python -m pytest
-
-# Local Python
+# Activate virtual environment and run tests
+source .venv/bin/activate
 pytest
+
+# Or run specific tests
+pytest tests/test_utils.py -v
 ```
 
 Tests cover:
 - Utility functions (filename sanitization, timestamps, path validation)
-- Scribe response parsing (flexible format handling)
+- Transcription parsing
 - Retry logic with exponential backoff
 
 ## Credits
 
 Built with:
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - YouTube downloader
-- [OpenAI Whisper](https://github.com/openai/whisper) - Local transcription
-- [ElevenLabs Scribe](https://elevenlabs.io/) - Cloud transcription
+- [MLX Whisper](https://github.com/ml-explore/mlx-examples/tree/main/whisper) - Fast local transcription on Apple Silicon
 - [Anthropic Claude](https://www.anthropic.com/) - AI extraction
-- [OpenAI GPT](https://openai.com/) - AI extraction
+- [OpenAI GPT](https://openai.com/) - AI extraction (alternative)
 - [FastAPI](https://fastapi.tiangolo.com/) - Web framework
+- [Next.js](https://nextjs.org/) - Frontend framework

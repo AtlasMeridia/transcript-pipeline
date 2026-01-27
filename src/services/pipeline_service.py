@@ -175,6 +175,7 @@ def process_video(
                     segments = caption_transcriber.transcribe(
                         audio_path="",  # Not used for captions
                         url=url,
+                        metadata=metadata,  # Pass through to avoid redundant API call
                     )
 
                 transcriber = caption_transcriber
@@ -186,9 +187,9 @@ def process_video(
                 update_progress('download', 'downloading', 'Captions unavailable, downloading audio...', progress=15)
 
                 # Fall back to audio download + transcription
-                # Pass existing metadata to avoid redundant YouTube API call
+                # Pass existing metadata to avoid redundant YouTube API call (if we have it)
                 with TimedOperation("Audio download"):
-                    audio_path, metadata = downloader.download_audio(url, metadata=metadata)
+                    audio_path, metadata = downloader.download_audio(url, metadata=metadata if metadata else None)
 
                 result['metadata'] = metadata
                 update_progress(

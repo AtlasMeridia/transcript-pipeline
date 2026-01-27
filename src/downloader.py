@@ -39,7 +39,11 @@ class VideoDownloader:
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'extract_flat': False,
+            'skip_download': True,
+            # Don't select formats - just get basic metadata
+            # This avoids YouTube 403 errors from SABR streaming protocol
+            'format': None,
+            'extract_flat': 'discard_in_playlist',
         }
 
         try:
@@ -135,7 +139,7 @@ class VideoDownloader:
             logger.warning(f"Failed to cleanup audio file: {e}")
 
     def get_captions(
-        self, url: str, language: str = 'en'
+        self, url: str, language: str = 'en', metadata: Optional[Dict] = None
     ) -> Tuple[Optional[str], Dict]:
         """
         Extract auto-generated captions from YouTube video.
@@ -143,6 +147,7 @@ class VideoDownloader:
         Args:
             url: YouTube video URL
             language: Language code for captions (default: 'en')
+            metadata: Optional pre-fetched metadata to avoid redundant API call
 
         Returns:
             Tuple of (caption_file_path or None, metadata_dict)
@@ -151,9 +156,10 @@ class VideoDownloader:
         Raises:
             Exception: If unable to extract video info
         """
-        # First get metadata
-        logger.info("Fetching video information...")
-        metadata = self.get_video_info(url)
+        # Use provided metadata or fetch it
+        if metadata is None:
+            logger.info("Fetching video information...")
+            metadata = self.get_video_info(url)
 
         from .utils import sanitize_filename
         output_filename = sanitize_filename(metadata['title'])
@@ -165,8 +171,8 @@ class VideoDownloader:
         output_template = str(captions_dir / f"{output_filename}.%(ext)s")
 
         ydl_opts = {
-            'quiet': True,
-            'no_warnings': True,
+            'quiet': False,  # Show progress for debugging
+            'no_warnings': False,
             'skip_download': True,  # Don't download video/audio
             'writeautomaticsub': True,  # Download auto-generated subtitles
             'subtitleslangs': [language],
@@ -175,18 +181,22 @@ class VideoDownloader:
         }
 
         try:
-            logger.info(f"Checking for captions ({language})...")
+            logger.info(f"Extracting captions ({language})...")
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+                # Use process=True to actually download subtitles
+                # (download=False with subtitle options still fetches subtitles)
+                info = ydl.extract_info(url, download=True)
 
-                # Check if auto captions are available for requested language
+                # Check if auto captions were available
                 auto_captions = info.get('automatic_captions', {})
-                if language not in auto_captions:
+                requested_subs = info.get('requested_subtitles', {})
+
+                logger.info(f"Available auto-captions languages: {list(auto_captions.keys())[:5]}...")
+                logger.info(f"Requested subtitles: {requested_subs}")
+
+                if not requested_subs and language not in auto_captions:
                     logger.info(f"No auto-captions available for language: {language}")
                     return None, metadata
-
-                # Download the captions
-                ydl.download([url])
 
             # Find the downloaded caption file
             caption_file = captions_dir / f"{output_filename}.{language}.vtt"
@@ -195,6 +205,11 @@ class VideoDownloader:
                 logger.info(f"Captions downloaded: {caption_file}")
                 return str(caption_file), metadata
             else:
+                # Try alternate naming pattern
+                for f in captions_dir.glob(f"{output_filename}*.vtt"):
+                    logger.info(f"Found caption file: {f}")
+                    return str(f), metadata
+
                 logger.warning("Caption file not found after download")
                 return None, metadata
 

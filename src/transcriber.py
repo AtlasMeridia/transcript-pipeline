@@ -200,11 +200,25 @@ class CaptionsUnavailableError(Exception):
     pass
 
 
+def _extract_video_id(url: str) -> str:
+    """Extract YouTube video ID from URL."""
+    import re
+    patterns = [
+        r'(?:v=|/v/|youtu\.be/|/embed/)([^&?\s]+)',
+        r'^([a-zA-Z0-9_-]{11})$',  # Just the ID
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, url)
+        if match:
+            return match.group(1)
+    raise ValueError(f"Could not extract video ID from URL: {url}")
+
+
 class CaptionTranscriber(BaseTranscriber):
     """Transcribes using YouTube auto-generated captions.
 
-    This is the fastest option when available - no audio processing required.
-    Falls back gracefully when captions aren't available.
+    Uses youtube-transcript-api for reliable caption extraction without
+    PO token requirements. Falls back gracefully when captions aren't available.
     """
 
     def __init__(
@@ -216,7 +230,7 @@ class CaptionTranscriber(BaseTranscriber):
         Initialize the caption transcriber.
 
         Args:
-            output_dir: Directory for temporary caption files
+            output_dir: Directory for temporary caption files (unused, kept for API compat)
             language: Language code for captions (default: 'en')
         """
         self.output_dir = output_dir
@@ -234,10 +248,14 @@ class CaptionTranscriber(BaseTranscriber):
         **kwargs,
     ) -> List[Segment]:
         """
-        Extract captions from YouTube video.
+        Extract captions from YouTube video using youtube-transcript-api.
 
         Note: Requires 'url' in kwargs since this doesn't process audio.
         The audio_path parameter is ignored.
+
+        Kwargs:
+            url: YouTube video URL (required)
+            metadata: Optional pre-fetched video metadata (not used but accepted for API compat)
 
         Raises:
             CaptionsUnavailableError: If captions are not available
@@ -249,33 +267,81 @@ class CaptionTranscriber(BaseTranscriber):
 
         lang = language or self.language
 
-        # Import here to avoid circular imports
-        from .downloader import VideoDownloader
-        from .caption_parser import parse_vtt
-
         logger.info(f"Fetching YouTube captions for: {url}")
 
         if progress_callback:
             progress_callback(0, 2)
 
-        # Download captions
-        downloader = VideoDownloader(output_dir=self.output_dir)
-        caption_path, metadata = downloader.get_captions(url, language=lang)
-
-        if caption_path is None:
-            raise CaptionsUnavailableError(
-                f"No auto-captions available for language '{lang}'"
+        try:
+            # Import youtube-transcript-api
+            from youtube_transcript_api import YouTubeTranscriptApi
+            from youtube_transcript_api._errors import (
+                TranscriptsDisabled,
+                NoTranscriptFound,
+                CouldNotRetrieveTranscript,
+            )
+        except ImportError as e:
+            logger.error(f"Failed to import youtube-transcript-api: {e}")
+            raise RuntimeError(
+                f"youtube-transcript-api is not installed. "
+                f"Install it with: pip install youtube-transcript-api (error: {e})"
             )
 
-        if progress_callback:
-            progress_callback(1, 2)
-
         try:
-            # Parse VTT file into segments
-            segments = parse_vtt(caption_path)
+            video_id = _extract_video_id(url)
+            logger.info(f"Extracting captions for video ID: {video_id}")
+
+            if progress_callback:
+                progress_callback(1, 2)
+
+            # Fetch transcript using youtube-transcript-api
+            ytt = YouTubeTranscriptApi()
+            transcript_list = ytt.list(video_id)
+
+            # Try to find transcript in requested language
+            transcript = None
+            try:
+                transcript = transcript_list.find_transcript([lang])
+            except NoTranscriptFound:
+                # Try auto-generated captions
+                try:
+                    transcript = transcript_list.find_generated_transcript([lang])
+                except NoTranscriptFound:
+                    # Try translating from another language
+                    for t in transcript_list:
+                        if t.is_translatable:
+                            try:
+                                transcript = t.translate(lang)
+                                logger.info(f"Translated captions from {t.language_code} to {lang}")
+                                break
+                            except Exception:
+                                continue
+
+            if transcript is None:
+                raise CaptionsUnavailableError(
+                    f"No captions available for language '{lang}'"
+                )
+
+            # Fetch the actual transcript data
+            entries = transcript.fetch()
+
+            # Convert to Segment objects
+            segments = []
+            for entry in entries:
+                # youtube-transcript-api returns FetchedTranscriptSnippet objects
+                # with .text, .start, and .duration attributes
+                start = float(entry.start)
+                duration = float(entry.duration)
+                segments.append(
+                    Segment(
+                        start=start,
+                        end=start + duration,
+                        text=entry.text.strip(),
+                    )
+                )
 
             if not segments:
-                raise CaptionsUnavailableError("Captions file was empty or unparseable")
+                raise CaptionsUnavailableError("Caption transcript was empty")
 
             logger.info(f"Caption extraction complete: {len(segments)} segments")
 
@@ -284,9 +350,13 @@ class CaptionTranscriber(BaseTranscriber):
 
             return segments
 
-        finally:
-            # Clean up caption file
-            downloader.cleanup_captions(caption_path)
+        except (TranscriptsDisabled, NoTranscriptFound, CouldNotRetrieveTranscript) as e:
+            raise CaptionsUnavailableError(f"Captions not available: {e}")
+        except CaptionsUnavailableError:
+            raise
+        except Exception as e:
+            logger.warning(f"youtube-transcript-api failed: {e}")
+            raise CaptionsUnavailableError(f"Failed to fetch captions: {e}")
 
 
 # =============================================================================
